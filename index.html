@@ -1356,7 +1356,8 @@ window.addEventListener('resize', function () { if (window.innerWidth > 640) mMe
 var CT = {
   view: 'plan', sub: 'web', month: null, day: null, open: null, ref: 0,
   fw: { theme: [], loc: '', coll: '', q: '' },
-  fl: { theme: [], loc: '', coll: '', q: '' }
+  fl: { theme: [], loc: '', coll: '', q: '' },
+  tag: 'Untagged'
 };
 var POST_DAYS = [2, 4, 6];
 var IDEA_BY = {};
@@ -1539,6 +1540,24 @@ function filterBar(key) {
     '<select data-fk="' + key + '" data-cf="coll">' + opts(uniq('collection'), f.coll, 'Any collection') + '</select>' +
     '</div>';
 }
+function tagsView() {
+  var counts = {}, untagged = 0;
+  IDEAS.forEach(function (i) { if (!i.themes.length) untagged++; i.themes.forEach(function (t) { counts[t] = (counts[t] || 0) + 1; }); });
+  var names = allThemes();
+  if (CT.tag !== 'Untagged' && names.indexOf(CT.tag) < 0) CT.tag = 'Untagged';
+  var pills = ['Untagged'].concat(names).map(function (t) {
+    var n = t === 'Untagged' ? untagged : counts[t];
+    return '<button class="pill" data-ctag="' + esc(t) + '" aria-pressed="' + (CT.tag === t) + '">' + esc(t) + ' · ' + n + '</button>';
+  }).join('');
+  var list = IDEAS.filter(function (i) { return CT.tag === 'Untagged' ? !i.themes.length : i.themes.indexOf(CT.tag) >= 0; });
+  var head = CT.tag === 'Untagged' ? '<p class="note">These ideas have no theme yet. Open one to watch it, then add a theme in its note in Obsidian.</p>' : '';
+  var cards = list.length ? list.slice(0, 120).map(function (i) {
+    return '<button class="idea" data-cidea="' + i.id + '"><b>' + esc(i.name) + '</b>' +
+      (i.text ? '<span class="ex">' + esc(i.text) + '</span>' : '') +
+      '<span class="meta">' + esc([i.themes.join(', ') || 'untagged', i.refs.length ? 'video' : ''].filter(Boolean).join(' · ')) + '</span></button>';
+  }).join('') + (list.length > 120 ? '<p class="note">Showing 120 of ' + list.length + '.</p>' : '') : '<p class="note">Nothing here. Every idea has a theme.</p>';
+  return '<div class="filters">' + pills + '</div>' + head + '<div class="ideas">' + cards + '</div>';
+}
 function ideasView() {
   var sub = '<div class="seg">' + [['web', 'Web'], ['list', 'List']].map(function (t) { return '<button data-csub="' + t[0] + '" aria-pressed="' + (CT.sub === t[0]) + '">' + t[1] + '</button>'; }).join('') + '</div>';
   if (CT.sub === 'list') return sub + filterBar('fl') + '<div class="ideas" id="ideagrid">' + ideaCards() + '</div>';
@@ -1720,11 +1739,11 @@ function athleticsView() {
     itemsMod('STAATUS Athletics content', 'fc', [['name', 'Post / idea', ''], ['date', 'Date', 'YYYY-MM-DD'], ['notes', 'Notes', '']], { sort: 'date' });
 }
 function contentPanel() {
-  var tabs = [['plan', 'Plan'], ['ideas', 'Ideas'], ['posted', 'Posted'], ['fc', 'STAATUS Athletics']];
+  var tabs = [['plan', 'Plan'], ['ideas', 'Ideas'], ['tags', 'Tags'], ['posted', 'Posted'], ['fc', 'STAATUS Athletics']];
   var seg = '<div class="seg">' + tabs.map(function (t) { return '<button data-cview="' + t[0] + '" aria-pressed="' + (CT.view === t[0]) + '">' + t[1] + '</button>'; }).join('') + '</div>';
   var note = DB ? '' : '<p class="note">' + esc(CONN) + ' Planning is read only until the database connects.</p>';
-  var v = CT.view === 'ideas' ? ideasView() : CT.view === 'posted' ? postedView() : CT.view === 'fc' ? athleticsView() : planView();
-  var stack = CT.view !== 'ideas';
+  var v = CT.view === 'ideas' ? ideasView() : CT.view === 'tags' ? tagsView() : CT.view === 'posted' ? postedView() : CT.view === 'fc' ? athleticsView() : planView();
+  var stack = CT.view !== 'ideas' && CT.view !== 'tags';
   return '<div style="grid-column: span 12;min-width:0">' + seg + note + '<div' + (stack ? ' class="cstack"' : '') + '>' + v + '</div></div>';
 }
 function contentAfter() { graphInit(); dayModalRender(); igProcess(); }
@@ -1795,6 +1814,7 @@ function drawerRender() {
 document.addEventListener('click', function (e) {
   var t = e.target, b;
   if ((b = t.closest('[data-cview]'))) { CT.view = b.getAttribute('data-cview'); show(); return; }
+  if ((b = t.closest('[data-ctag]'))) { CT.tag = b.getAttribute('data-ctag'); show(); return; }
   if ((b = t.closest('[data-csub]'))) { CT.sub = b.getAttribute('data-csub'); show(); return; }
   if ((b = t.closest('[data-cnav]'))) {
     var n = +b.getAttribute('data-cnav'), y = +CT.month.slice(0, 4), m = +CT.month.slice(5, 7);
