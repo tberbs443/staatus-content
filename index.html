@@ -245,6 +245,8 @@ form.inline input { flex: 1 1 140px; }
 .pcard .cover { max-width: none; margin-top: 0; }
 .cover img { display: block; width: 100%; height: auto; max-height: 520px; object-fit: cover; }
 .cover .play { position: absolute; left: 0; right: 0; bottom: 0; padding: 8px 10px; background: var(--fg); color: var(--bg); font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; }
+.igfail { margin: 12px 0 6px; padding: 14px; border: 1px solid var(--line); background: var(--soft); }
+.igfail p { margin: 0 0 10px; font-size: 13px; }
 .cover .nocover { display: flex; align-items: center; justify-content: center; min-height: 120px; padding: 16px; text-decoration: underline; }
 .emb { width: 100%; max-width: 340px; height: 640px; border: 1px solid var(--line); background: #fff; display: block; margin: 12px 0 6px; }
 .pcard .emb { max-width: none; margin-top: 0; }
@@ -1843,7 +1845,8 @@ function drawerRender() {
   el.className = 'on';
   var T = window.__TAGGER;
   var main = (i.text && !T ? '<p class="note" style="color:var(--fg)">' + esc(i.text) + '</p>' : '') + previewHtml(i) + (other ? '<p class="note">' + other + '</p>' : '') + plan +
-    '<p class="note">Vault note: ' + esc(i.path) + '</p>';
+    '<p class="note">Vault note: ' + esc(i.path) + '</p>' +
+    (T ? '' : '<p class="note">Tagging is off on this page. On Teo\'s Mac, double-click Tag Ideas.command, then use <a href="http://localhost:4748/#content">localhost:4748</a>.</p>');
   el.innerHTML = '<div class="veil" data-cclose="1"></div><div class="sheet' + (T ? ' wide' : '') + '"><button class="btn x" data-cclose="1" aria-label="Close">×</button><h3>' + esc(i.name) + '</h3>' +
     '<div class="tags">' + tags.map(function (t) { return '<span>' + esc(t) + '</span>'; }).join('') + (i.tagged ? '' : '<span>needs tagging</span>') + '</div>' +
     (T ? '<div class="tgrid">' + tagPanel(i) + '<div style="min-width:0">' + main + '</div></div>' : main) + '</div>';
@@ -1851,6 +1854,7 @@ function drawerRender() {
 }
 document.addEventListener('click', function (e) {
   var t = e.target, b;
+  if ((b = t.closest('[data-igretry]'))) { drawerRender(); dayModalRender(); igProcess(true); return; }
   if ((b = t.closest('[data-cview]'))) { CT.view = b.getAttribute('data-cview'); show(); return; }
   if ((b = t.closest('[data-ctag]'))) { CT.tag = b.getAttribute('data-ctag'); show(); return; }
   if ((b = t.closest('[data-csub]'))) { CT.sub = b.getAttribute('data-csub'); show(); return; }
@@ -1896,10 +1900,30 @@ document.addEventListener('change', function (e) {
   var c = t.getAttribute && t.getAttribute('data-cs');
   if (c && DB) { var d = {}; d[c] = t.value; put('items', t.getAttribute('data-sid'), d); }
 });
-function igProcess() {
+var igTimers = [];
+function igGiveUp() {
+  var bq = document.querySelectorAll('blockquote.instagram-media');
+  for (var n = 0; n < bq.length; n++) {
+    var a = bq[n].querySelector('a'), u = a ? a.getAttribute('href') : '';
+    var box = document.createElement('div');
+    box.className = 'igfail';
+    box.innerHTML = '<p>The preview did not load.</p><a class="btn" href="' + esc(u) + '" target="_blank" rel="noopener">Open on Instagram ↗</a> <button class="btn" data-igretry="1">Try again</button>';
+    bq[n].parentNode.replaceChild(box, bq[n]);
+  }
+}
+function igProcess(retry) {
   if (!window.__LOCAL) return;
-  if (!window.instgrm) { if (!document.getElementById('igjs')) { var sc = document.createElement('script'); sc.id = 'igjs'; sc.async = true; sc.src = 'https://www.instagram.com/embed.js'; sc.onload = function () { window.instgrm.Embeds.process(); }; document.body.appendChild(sc); } }
-  else window.instgrm.Embeds.process();
+  igTimers.forEach(clearTimeout); igTimers = [];
+  var run = function () { try { window.instgrm.Embeds.process(); } catch (e) { } };
+  if (!window.instgrm) {
+    var old = document.getElementById('igjs');
+    if (old && retry) old.parentNode.removeChild(old);
+    if (!document.getElementById('igjs')) { var sc = document.createElement('script'); sc.id = 'igjs'; sc.async = true; sc.src = 'https://www.instagram.com/embed.js'; sc.onload = run; document.body.appendChild(sc); }
+  } else run();
+  if (!document.querySelector('blockquote.instagram-media')) return;
+  igTimers.push(setTimeout(function () { if (document.querySelector('blockquote.instagram-media')) run(); }, 2500));
+  igTimers.push(setTimeout(function () { if (document.querySelector('blockquote.instagram-media')) run(); }, 6000));
+  igTimers.push(setTimeout(igGiveUp, 11000));
 }
 function v28TeoName(it) {
   var fields = [it && it.name, it && it.who, it && it.title];
