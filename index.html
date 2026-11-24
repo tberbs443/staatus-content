@@ -224,6 +224,16 @@ form.inline input { flex: 1 1 140px; }
 #drawer .veil { position: absolute; inset: 0; background: rgba(0,0,0,.45); }
 #drawer .sheet { position: absolute; top: 0; right: 0; bottom: 0; width: min(460px, 100%); background: var(--bg); border-left: 1px solid var(--line); overflow-y: auto; padding: 20px 22px 40px; }
 #drawer h3 { margin: 0 28px 4px 0; font-size: 22px; letter-spacing: -.02em; line-height: 1.15; }
+#drawer .sheet.wide { width: min(960px, 100%); }
+.tgrid { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 22px; margin-top: 14px; align-items: start; }
+@media (max-width: 780px) { .tgrid { grid-template-columns: 1fr; } }
+.tpanel { display: flex; flex-direction: column; gap: 10px; }
+.tpanel .lab { margin: 0 0 6px; }
+.tpills { display: flex; flex-wrap: wrap; gap: 6px; }
+.tdrop { display: flex; justify-content: space-between; align-items: center; width: 100%; background: none; color: inherit; border: 1px solid var(--line); padding: 9px 12px; cursor: pointer; font: inherit; font-size: 13px; text-align: left; }
+.tdrop span:last-child { font-family: var(--font-mono); font-size: 11px; color: var(--mute); }
+.tbody { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 0 2px; }
+.tpanel textarea { width: 100%; min-height: 110px; box-sizing: border-box; background: none; color: inherit; border: 1px solid var(--line); padding: 8px 10px; font: inherit; font-size: 13px; resize: vertical; }
 #drawer .x { position: absolute; top: 14px; right: 14px; }
 .dfields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 14px 0; }
 .dfields label { display: block; font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--mute); }
@@ -1357,7 +1367,7 @@ var CT = {
   view: 'plan', sub: 'web', month: null, day: null, open: null, ref: 0,
   fw: { theme: [], loc: '', coll: '', q: '' },
   fl: { theme: [], loc: '', coll: '', q: '' },
-  tag: 'Untagged'
+  tag: 'Untagged', tg: { micro: false, loc: false, notes: false }, tmsg: ''
 };
 var POST_DAYS = [2, 4, 6];
 var IDEA_BY = {};
@@ -1793,11 +1803,37 @@ function previewHtml(i) {
   var nav = i.refs.length > 1 ? '<div class="btnrow">' + i.refs.map(function (r, n) { return '<button class="pill" data-cref="' + n + '" aria-pressed="' + (n === idx) + '">Video ' + (n + 1) + '</button>'; }).join('') + '</div>' : '';
   return coverHtml(u, i.name) + nav;
 }
+window.__TAGGER = false;
+try { fetch('/api/ping').then(function (r) { return r.ok ? r.json() : null; }).then(function (j) { if (j && j.ok) { window.__TAGGER = true; drawerRender(); } }).catch(function () { }); } catch (e) { }
+function tagPanel(i) {
+  var chk = function (field, val, label, on) { return '<button class="pill" data-ttag="' + field + '" data-tval="' + esc(val) + '" aria-pressed="' + on + '">' + esc(label) + '</button>'; };
+  var themes = allThemes().map(function (t) { return chk('themes', t, t, i.themes.indexOf(t) >= 0); }).join('');
+  var microAll = uniq('micro'); i.micro.forEach(function (m) { if (microAll.indexOf(m) < 0) microAll.push(m); });
+  var locAll = uniq('location'); i.location.forEach(function (m) { if (locAll.indexOf(m) < 0) locAll.push(m); });
+  var drop = function (key, title, n, body) {
+    return '<div><button class="tdrop" data-ttog="' + key + '" aria-expanded="' + !!CT.tg[key] + '"><span>' + title + '</span><span>' + (n ? n + ' · ' : '') + (CT.tg[key] ? '▴' : '▾') + '</span></button>' + (CT.tg[key] ? body : '') + '</div>';
+  };
+  var long = (i.text || '').length >= 420;
+  var notesBody = long ? '<p class="note">This note is long. Edit it in Obsidian.</p>' :
+    '<div class="tbody" style="display:block"><textarea id="tnotes" placeholder="Notes">' + esc(i.text || '') + '</textarea><div class="btnrow"><button class="btn" data-tnotes="1">Save note</button></div></div>';
+  return '<div class="tpanel"><div><p class="lab">Themes</p><div class="tpills">' + themes + '</div></div>' +
+    drop('micro', 'Micro themes', i.micro.length, '<div class="tbody">' + microAll.map(function (m) { return chk('micro', m, m, i.micro.indexOf(m) >= 0); }).join('') + '</div>') +
+    drop('loc', 'Location', i.location.length, '<div class="tbody">' + locAll.map(function (m) { return chk('location', m, shortLoc(m), i.location.indexOf(m) >= 0); }).join('') + '</div>') +
+    drop('notes', 'Notes', i.text ? '1' : '', notesBody) +
+    '<p class="note" id="tmsg">' + esc(CT.tmsg || 'Saves to the note as you tap.') + '</p></div>';
+}
+function tagSave(i, field, value) {
+  CT.tmsg = 'Saving…'; var m = document.getElementById('tmsg'); if (m) m.textContent = CT.tmsg;
+  return fetch('/api/tag', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: i.path, field: field, value: value }) })
+    .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || 'Could not save.'); return j; }); })
+    .then(function (j) { i.themes = j.themes; i.micro = j.micro; i.location = j.location; i.text = j.text; i.tagged = j.tagged; CT.tmsg = 'Saved to the note.'; show(); drawerRender(); })
+    .catch(function (e) { CT.tmsg = 'Not saved: ' + e.message; drawerRender(); });
+}
 function drawerRender() {
   var el = document.getElementById('drawer'); if (!el) { el = document.createElement('div'); el.id = 'drawer'; document.body.appendChild(el); }
   var i = CT.open && IDEA_BY[CT.open];
   if (!i) { el.className = ''; el.innerHTML = ''; return; }
-  var a = document.activeElement; if (el.className === 'on' && a && el.contains(a) && a.tagName === 'INPUT') return;
+  var a = document.activeElement; if (el.className === 'on' && a && el.contains(a) && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA')) return;
   var s = slotFor(i.id), tags = i.themes.concat(i.micro.slice(0, 4), i.location.map(shortLoc), i.collection.filter(function (c) { return c !== 'Any'; }));
   var plan = s
     ? '<div class="dfields"><label>Shoot<input type="date" data-cs="shoot" data-sid="' + esc(s.id) + '" value="' + esc(s.shoot || '') + '"></label><label>Post<input type="date" data-cs="post" data-sid="' + esc(s.id) + '" value="' + esc(s.post || '') + '"></label></div>' +
@@ -1805,10 +1841,12 @@ function drawerRender() {
     : '<div class="btnrow"><button class="btn" data-cplan="' + i.id + '"' + (DB ? '' : ' disabled') + '>Plan it (next open post day)</button></div>';
   var other = i.other.map(safeUrl).filter(Boolean).map(function (u) { return '<a href="' + esc(u) + '" target="_blank" rel="noopener">' + esc(u.replace(/^https?:\/\/(www\.)?/, '').slice(0, 48)) + ' ↗</a>'; }).join('<br>');
   el.className = 'on';
-  el.innerHTML = '<div class="veil" data-cclose="1"></div><div class="sheet"><button class="btn x" data-cclose="1" aria-label="Close">×</button><h3>' + esc(i.name) + '</h3>' +
+  var T = window.__TAGGER;
+  var main = (i.text && !T ? '<p class="note" style="color:var(--fg)">' + esc(i.text) + '</p>' : '') + previewHtml(i) + (other ? '<p class="note">' + other + '</p>' : '') + plan +
+    '<p class="note">Vault note: ' + esc(i.path) + '</p>';
+  el.innerHTML = '<div class="veil" data-cclose="1"></div><div class="sheet' + (T ? ' wide' : '') + '"><button class="btn x" data-cclose="1" aria-label="Close">×</button><h3>' + esc(i.name) + '</h3>' +
     '<div class="tags">' + tags.map(function (t) { return '<span>' + esc(t) + '</span>'; }).join('') + (i.tagged ? '' : '<span>needs tagging</span>') + '</div>' +
-    (i.text ? '<p class="note" style="color:var(--fg)">' + esc(i.text) + '</p>' : '') + previewHtml(i) + (other ? '<p class="note">' + other + '</p>' : '') + plan +
-    '<p class="note">Vault note: ' + esc(i.path) + '</p></div>';
+    (T ? '<div class="tgrid">' + tagPanel(i) + '<div style="min-width:0">' + main + '</div></div>' : main) + '</div>';
   igProcess();
 }
 document.addEventListener('click', function (e) {
@@ -1824,6 +1862,13 @@ document.addEventListener('click', function (e) {
   if ((b = t.closest('[data-cdayclose]'))) { CT.dayModal = false; dayModalRender(); return; }
   if ((b = t.closest('[data-cmore]'))) { CT.dayN = (CT.dayN || 6) + 6; dayModalRender(); return; }
   if ((b = t.closest('[data-cpick]'))) { if (DB) { planIdeaOn(b.getAttribute('data-cpick'), selDay()); CT.dayModal = false; dayModalRender(); } return; }
+  if ((b = t.closest('[data-ttog]'))) { var tk = b.getAttribute('data-ttog'); CT.tg[tk] = !CT.tg[tk]; drawerRender(); return; }
+  if ((b = t.closest('[data-ttag]'))) {
+    var ti = IDEA_BY[CT.open], tf = b.getAttribute('data-ttag'), tv = b.getAttribute('data-tval');
+    if (ti && window.__TAGGER) { var cur = (tf === 'themes' ? ti.themes : tf === 'micro' ? ti.micro : ti.location).slice(), at2 = cur.indexOf(tv); if (at2 >= 0) cur.splice(at2, 1); else cur.push(tv); tagSave(ti, tf, cur); }
+    return;
+  }
+  if ((b = t.closest('[data-tnotes]'))) { var ni = IDEA_BY[CT.open], ta = document.getElementById('tnotes'); if (ni && ta && window.__TAGGER) tagSave(ni, 'notes', ta.value); return; }
   if ((b = t.closest('[data-cclose]'))) { CT.open = null; drawerRender(); return; }
   if ((b = t.closest('[data-cidea]'))) { CT.open = b.getAttribute('data-cidea'); CT.ref = 0; drawerRender(); return; }
   if ((b = t.closest('[data-cref]'))) { CT.ref = +b.getAttribute('data-cref'); drawerRender(); return; }

@@ -107,4 +107,5 @@ def main():
         subprocess.run(['git'] + helper + ['push'], cwd=HERE, check=True)
         print('Published. The site updates in about a minute.')
 
-main()
+if __name__ == '__main__':
+    main()
