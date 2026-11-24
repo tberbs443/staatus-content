@@ -1033,20 +1033,25 @@ body .hq-add form.inline { margin-top: 0; }
 .kc-src { margin: 0 0 12px; }
 .kc-src a { color: var(--fg); text-decoration: underline; }
 
+
+/* v2: no side tab, Back to HQ, full-width calendar, zoomed-out idea picker, tiny idea text */
+body .shell, body .shell.rail-collapsed { display: block; }
+body main { padding: 24px 28px 60px 28px !important; max-width: none; }
+body .backhq { display: inline-flex; align-items: center; min-height: 0; margin: 0 0 14px; text-decoration: none; font-size: 13px; }
+body .top .stamp { align-self: flex-end; }
+#daymodal .dm { width: min(98vw, 780px); max-height: 98vh; top: 1vh; padding: 14px 18px 18px; }
+#daymodal .dgrid { grid-template-columns: repeat(3, 360px); gap: 28px; justify-content: center; zoom: .46; }
+#daymodal .dhead b { font-size: 17px; }
+#daymodal .dtext { font-size: 13px; line-height: 1.25; margin: 3px 0 0; max-height: 2.5em; overflow: hidden; opacity: .75; }
+#daymodal .cover.wide, #daymodal .instagram-media { max-width: 360px !important; min-width: 0 !important; }
+.ideas { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
 </style>
 <div class="shell" id="hq-shell">
-  <aside class="rail" id="hq-rail">
-    <div class="brand">
-      <h1>STAATUS Content</h1>
-      <p>What we post, and what is next</p>
-      <button type="button" class="btn" id="m-menu" aria-expanded="false" aria-controls="rail"><span id="m-cur">Menu</span><span aria-hidden="true">&#9662;</span></button>
-    </div>
-    <div class="rail-nav" id="rail"></div>
-  </aside>
+  
   <main>
     <div class="top">
       <div>
-        <button class="btn x" id="rail-toggle" aria-controls="hq-rail" aria-expanded="true">Hide tabs</button><h2 id="title"></h2>
+        <a class="btn x backhq" href="https://claude.ai/artifact/A1aR9zhTQNS8SeFC2R5Umt">&larr; Back to STAATUS HQ</a><h2 id="title"></h2>
         <p id="purpose"></p>
       </div>
       <div class="stamp" id="stamp">Connecting…</div>
@@ -1350,8 +1355,8 @@ document.addEventListener('click', function (e) {
 window.addEventListener('resize', function () { if (window.innerWidth > 640) mMenu(false); });
 var CT = {
   view: 'plan', sub: 'web', month: null, day: null, open: null, ref: 0,
-  fw: { theme: '', loc: '', coll: '', q: '', unplanned: false, untagged: false },
-  fl: { theme: '', loc: '', coll: '', q: '', unplanned: true, untagged: false }
+  fw: { theme: [], loc: '', coll: '', q: '' },
+  fl: { theme: [], loc: '', coll: '', q: '' }
 };
 var POST_DAYS = [2, 4, 6];
 var IDEA_BY = {};
@@ -1508,9 +1513,7 @@ function planView() {
 function ideaList(f) {
   var q = f.q.toLowerCase(), planned = {}; slots().forEach(function (s) { planned[s.ideaId] = 1; });
   return IDEAS.filter(function (i) {
-    if (f.unplanned && planned[i.id]) return false;
-    if (f.untagged && i.tagged) return false;
-    if (f.theme && i.themes.indexOf(f.theme) < 0) return false;
+    if (f.theme.length && !f.theme.some(function (t) { return i.themes.indexOf(t) >= 0; })) return false;
     if (f.loc && i.location.indexOf(f.loc) < 0) return false;
     if (f.coll && i.collection.indexOf(f.coll) < 0) return false;
     if (q && (i.name + ' ' + i.text + ' ' + i.micro.join(' ')).toLowerCase().indexOf(q) < 0) return false;
@@ -1529,13 +1532,12 @@ function ideaCards() {
 function opts(list, cur, label) { return '<option value="">' + label + '</option>' + list.map(function (x) { return '<option' + (x === cur ? ' selected' : '') + ' value="' + esc(x) + '">' + esc(shortLoc(x)) + '</option>'; }).join(''); }
 function uniq(field) { var c = {}; IDEAS.forEach(function (i) { i[field].forEach(function (x) { if (x !== 'Any') c[x] = 1; }); }); return Object.keys(c).sort(); }
 function filterBar(key) {
-  var f = CT[key], pills = allThemes().map(function (t) { return '<button class="pill" data-fk="' + key + '" data-cth="' + esc(t) + '" aria-pressed="' + (f.theme === t) + '">' + esc(t) + '</button>'; }).join('');
+  var f = CT[key], pills = allThemes().map(function (t) { return '<button class="pill" data-fk="' + key + '" data-cth="' + esc(t) + '" aria-pressed="' + (f.theme.indexOf(t) >= 0) + '">' + esc(t) + '</button>'; }).join('');
   return '<div class="filters">' + pills + '</div>' +
     '<div class="filters"><input type="search" id="cq-' + key + '" placeholder="Search ideas" value="' + esc(f.q) + '">' +
     '<select data-fk="' + key + '" data-cf="loc">' + opts(uniq('location'), f.loc, 'Any location') + '</select>' +
     '<select data-fk="' + key + '" data-cf="coll">' + opts(uniq('collection'), f.coll, 'Any collection') + '</select>' +
-    '<button class="pill" data-fk="' + key + '" data-cflt="unplanned" aria-pressed="' + f.unplanned + '">Not planned yet</button>' +
-    '<button class="pill" data-fk="' + key + '" data-cflt="untagged" aria-pressed="' + f.untagged + '">Needs tagging</button></div>';
+    '</div>';
 }
 function ideasView() {
   var sub = '<div class="seg">' + [['web', 'Web'], ['list', 'List']].map(function (t) { return '<button data-csub="' + t[0] + '" aria-pressed="' + (CT.sub === t[0]) + '">' + t[1] + '</button>'; }).join('') + '</div>';
@@ -1685,7 +1687,7 @@ function graphInit() {
     if (d && !d.moved) {
       var n = d.node;
       if (n.idea) { CT.open = n.idea.id; CT.ref = 0; drawerRender(); }
-      else { var key = n.hub === 'theme' ? 'theme' : 'coll'; CT.fw[key] = CT.fw[key] === n.label ? '' : n.label; show(); }
+      else { if (n.hub === 'theme') { var ti = CT.fw.theme.indexOf(n.label); if (ti >= 0) CT.fw.theme.splice(ti, 1); else CT.fw.theme.push(n.label); } else CT.fw.coll = CT.fw.coll === n.label ? '' : n.label; show(); }
     }
   }
   c.addEventListener('pointerup', up); c.addEventListener('pointercancel', up);
@@ -1718,10 +1720,10 @@ function athleticsView() {
     itemsMod('STAATUS Athletics content', 'fc', [['name', 'Post / idea', ''], ['date', 'Date', 'YYYY-MM-DD'], ['notes', 'Notes', '']], { sort: 'date' });
 }
 function contentPanel() {
-  var tabs = [['plan', 'Plan'], ['ideas', 'Ideas'], ['posted', 'Posted'], ['analytics', 'Analytics'], ['fc', 'STAATUS Athletics']];
+  var tabs = [['plan', 'Plan'], ['ideas', 'Ideas'], ['posted', 'Posted'], ['fc', 'STAATUS Athletics']];
   var seg = '<div class="seg">' + tabs.map(function (t) { return '<button data-cview="' + t[0] + '" aria-pressed="' + (CT.view === t[0]) + '">' + t[1] + '</button>'; }).join('') + '</div>';
   var note = DB ? '' : '<p class="note">' + esc(CONN) + ' Planning is read only until the database connects.</p>';
-  var v = CT.view === 'ideas' ? ideasView() : CT.view === 'posted' ? postedView() : CT.view === 'analytics' ? analyticsView() : CT.view === 'fc' ? athleticsView() : planView();
+  var v = CT.view === 'ideas' ? ideasView() : CT.view === 'posted' ? postedView() : CT.view === 'fc' ? athleticsView() : planView();
   var stack = CT.view !== 'ideas';
   return '<div style="grid-column: span 12;min-width:0">' + seg + note + '<div' + (stack ? ' class="cstack"' : '') + '>' + v + '</div></div>';
 }
@@ -1809,7 +1811,7 @@ document.addEventListener('click', function (e) {
   if ((b = t.closest('[data-cplan]'))) { if (DB) planIdea(b.getAttribute('data-cplan')); return; }
   if ((b = t.closest('[data-cunplan]'))) { if (DB) del('items', b.getAttribute('data-cunplan')); return; }
   if ((b = t.closest('[data-cdone]'))) { var sid = b.getAttribute('data-cdone'), s = slots().filter(function (x) { return x.id === sid; })[0]; if (s && DB) put('items', sid, { done: !s.done }); return; }
-  if ((b = t.closest('[data-cth]'))) { var f1 = CT[b.getAttribute('data-fk')], th = b.getAttribute('data-cth'); f1.theme = f1.theme === th ? '' : th; show(); return; }
+  if ((b = t.closest('[data-cth]'))) { var f1 = CT[b.getAttribute('data-fk')], th = b.getAttribute('data-cth'); var at = f1.theme.indexOf(th); if (at >= 0) f1.theme.splice(at, 1); else f1.theme.push(th); show(); return; }
   if ((b = t.closest('[data-cflt]'))) { var f2 = CT[b.getAttribute('data-fk')], k = b.getAttribute('data-cflt'); f2[k] = !f2[k]; show(); return; }
   if ((b = t.closest('[data-day]'))) { CT.day = b.getAttribute('data-day'); CT.dayModal = true; CT.dayN = 6; show(); return; }
 });
@@ -1846,10 +1848,7 @@ function v28TeoName(it) {
 var railCollapsed = false;
 try { railCollapsed = window.localStorage.getItem('staatus-hq-rail-collapsed') === 'true'; } catch (e) {}
 function railRender() {
-  document.getElementById('hq-shell').classList.toggle('rail-collapsed', railCollapsed);
-  var button = document.getElementById('rail-toggle');
-  button.textContent = railCollapsed ? 'Show tabs' : 'Hide tabs';
-  button.setAttribute('aria-expanded', String(!railCollapsed));
+  /* no side tab on the public page */
 }
 document.addEventListener('click', function (e) {
   if (!e.target.closest('#rail-toggle')) return;
@@ -1858,8 +1857,7 @@ document.addEventListener('click', function (e) {
   railRender();
 });
 function renderRail(current) {
-  document.getElementById('rail').innerHTML = '<div class="group"><span>Reach</span><button class="nav" data-tab="content" aria-current="page">Content</button></div>';
-  var lab = document.getElementById('m-cur'); if (lab) lab.textContent = 'Content';
+  /* no side tab on the public page */
 }
 function show() {
   renderRail('content');
