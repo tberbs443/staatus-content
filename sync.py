@@ -11,7 +11,7 @@ never overwrite each other. The page loads every data/ideas-*.js file and merges
 A note is an idea if it has text, an Instagram link, or tags. The tags are read from the
 note's front matter: themes, micro_themes, status, location, collection (each a list of [[links]]).
 """
-import argparse, hashlib, json, os, re, subprocess, sys
+import argparse, hashlib, json, os, re, shutil, subprocess, sys
 
 SKIP_DIRS = ('zThemes', 'zzMicro Themes', 'zzStatus', 'zzzLocations', 'zzCollections', 'Utility', 'Captions')
 SKIP_NAMES = ('MAIN CONTENT FILE', 'Content Picker', 'social_daily_notes_transfer')
@@ -102,7 +102,9 @@ def main():
             return
         subprocess.run(['git', 'commit', '-m', 'Update %s ideas' % author], cwd=HERE, check=True)
         subprocess.run(['git', 'pull', '--rebase', '--quiet'], cwd=HERE)
-        subprocess.run(['git', 'push'], cwd=HERE, check=True)
+        # use the GitHub CLI login when there is one (the Mac keychain may hold a different account)
+        helper = ['-c', 'credential.helper=', '-c', 'credential.helper=!gh auth git-credential'] if shutil.which('gh') else []
+        subprocess.run(['git'] + helper + ['push'], cwd=HERE, check=True)
         print('Published. The site updates in about a minute.')
 
 main()
