@@ -193,6 +193,8 @@ form.inline input { flex: 1 1 140px; }
 .chip.post { background: var(--fg); color: var(--bg); }
 .chip.done { background: var(--soft); color: var(--mute); border-color: var(--mute); text-decoration: line-through; }
 .chip.past { background: var(--fg); color: var(--bg); opacity: .55; }
+.chip.hold { background: transparent; color: var(--fg); border-style: dotted; font-style: italic; padding-top: 0; padding-bottom: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; white-space: normal; overflow-wrap: anywhere; }
+.legend i.h { border-style: dotted; border-width: 2px; }
 .legend { display: flex; gap: 14px; flex-wrap: wrap; font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--mute); margin-top: 10px; }
 .legend i { display: inline-block; width: 12px; height: 12px; border: 1px solid var(--fg); vertical-align: -2px; margin-right: 5px; }
 .legend i.f { background: var(--fg); }
@@ -294,6 +296,12 @@ body.boarding{overflow:hidden}
 #daymodal .dm { position: absolute; top: 2vh; left: 50%; transform: translateX(-50%); width: min(1500px, 96vw); max-height: 96vh; overflow-y: auto; background: var(--bg); border: 1px solid var(--line); padding: 20px 24px 28px; }
 #daymodal h3 { margin: 0 32px 4px 0; font-size: 22px; letter-spacing: -.02em; }
 #daymodal .x { position: absolute; top: 12px; right: 12px; }
+#daymodal .dnotes { margin: 12px 0 16px; }
+#daymodal .dnotes .lab { margin: 0 0 6px; }
+#daymodal .dnrow { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
+#daymodal .dnrow input { flex: 1; min-width: 0; padding: 9px 12px; font: inherit; font-size: 16px; color: var(--fg); background: rgba(255,255,255,.07); border: 1px solid var(--line); border-radius: 10px; }
+#daymodal .dnrow input::placeholder { color: var(--fg); opacity: .5; }
+#daymodal .dnrow .btn { flex: none; min-width: 92px; }
 .dgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 400px), 1fr)); gap: 24px; align-items: start; }
 .dcard { min-width: 0; border-top: 2px solid var(--fg); padding-top: 10px; }
 .dhead { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
@@ -1915,6 +1923,25 @@ function planIdeaOn(id, day) {
 }
 function planIdea(id, taken) { planIdeaOn(id, nextPostDay(taken || takenPostDays())); }
 function selDay() { return CT.day || firstPostDay(); }
+// placeholders: a few words on a day, with or without an idea
+function dayNotes(day) {
+  return itemsOf('day-note').filter(function (x) { return !day || x.day === day; })
+    .sort(function (a, b) { return String(a.createdAt) < String(b.createdAt) ? -1 : 1; });
+}
+// also runs when the day closes, so typed words are never thrown away
+function noteAdd() {
+  var el = document.getElementById('dnnew'); if (!el || !DB) return;
+  var text = el.value.trim(); if (!text) return;
+  var day = el.getAttribute('data-nday');
+  el.value = ''; el.blur();
+  add('items', { kind: 'day-note', day: day, text: text });
+}
+function dayNoteHtml(day) {
+  var off = DB ? '' : ' disabled';
+  return '<div class="dnotes"><p class="lab">Placeholder</p>' + dayNotes(day).map(function (n) {
+    return '<div class="dnrow"><input type="text" maxlength="200" data-dnote="' + esc(n.id) + '" value="' + esc(n.text) + '" aria-label="Placeholder text"' + off + '><button class="btn" data-cunplan="' + esc(n.id) + '"' + off + '>Remove</button></div>';
+  }).join('') + '<div class="dnrow"><input type="text" maxlength="200" id="dnnew" data-nday="' + day + '" placeholder="Type anything, even with no idea yet" aria-label="New placeholder text"' + off + '><button class="btn" data-dnadd="1"' + off + '>Add</button></div></div>';
+}
 function calendarMod() {
   if (!CT.month) { var t = new Date(); CT.month = t.getFullYear() + '-' + pad2(t.getMonth() + 1); }
   var y = +CT.month.slice(0, 4), m = +CT.month.slice(5, 7), first = new Date(y, m - 1, 1), days = new Date(y, m, 0).getDate();
@@ -1926,6 +1953,7 @@ function calendarMod() {
     if (s.post) { kind[s.post] = (kind[s.post] || '') + 'P'; put1(s.post, '<button class="chip post' + (s.done ? ' done' : '') + '" data-cidea="' + esc(s.ideaId) + '" title="Post: ' + nm + '">' + nm + '</button>'); }
     if (s.shoot) { kind[s.shoot] = (kind[s.shoot] || '') + 'S'; put1(s.shoot, '<button class="chip shoot' + (s.done ? ' done' : '') + '" data-cidea="' + esc(s.ideaId) + '" title="Shoot: ' + nm + '">Shoot · ' + nm + '</button>'); }
   });
+  dayNotes().forEach(function (n) { put1(n.day, '<span class="chip hold" title="Placeholder: ' + esc(n.text) + '">' + esc(n.text) + '</span>'); });
   var cells = '';
   ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach(function (d) { cells += '<div class="ch">' + d + '</div>'; });
   for (var i = 0; i < first.getDay(); i++) cells += '<div class="cd off"></div>';
@@ -1937,8 +1965,8 @@ function calendarMod() {
   var mname = first.toLocaleString([], { month: 'long', year: 'numeric' });
   var body = '<div class="calbar"><button class="btn" data-cnav="-1">←</button><b>' + esc(mname) + '</b><button class="btn" data-cnav="1">→</button><button class="btn" data-cnav="0">Today</button></div>' +
     '<div class="cal ccal">' + cells + '</div>' +
-    '<div class="legend"><span><i class="f"></i>Post</span><span><i class="s"></i>Shoot day</span><span><i class="o"></i>Selected day</span><span>Already posted (faded)</span></div>';
-  return mod('Calendar', body, { live: true, tagText: 'Click a day', note: 'Click any day to pick an idea for it.' });
+    '<div class="legend"><span><i class="f"></i>Post</span><span><i class="s"></i>Shoot day</span><span><i class="h"></i>Placeholder</span><span><i class="o"></i>Selected day</span><span>Already posted (faded)</span></div>';
+  return mod('Calendar', body, { live: true, tagText: 'Click a day', note: 'Click any day to pick an idea or add a placeholder.' });
 }
 function batchMod() {
   var by = {}, tk = ymd(todayD());
@@ -2399,9 +2427,10 @@ function dayModalRender() {
   if (!CT.dayModal || CT.view !== 'plan') { el.className = ''; el.innerHTML = ''; CT.dmKey = null; return; }
   var a = document.activeElement; if (el.className === 'on' && a && el.contains(a) && a.tagName === 'INPUT') return;
   var day = selDay(), past = day < ymd(todayD());
-  var key = day + '|' + (CT.dayN || 6) + '|' + slots().map(function (x) { return x.ideaId + x.post + x.shoot + x.done; }).join(',');
+  var key = day + '|' + (CT.dayN || 6) + '|' + slots().map(function (x) { return x.ideaId + x.post + x.shoot + x.done; }).join(',') + '|' + dayNotes(day).map(function (n) { return n.id; }).join(',');
   if (el.className === 'on' && CT.dmKey === key) return;
   CT.dmKey = key;
+  var typing = document.getElementById('dnnew'), draft = typing && typing.getAttribute('data-nday') === day ? typing.value : '';
   var here = slots().filter(function (s) { return s.post === day || s.shoot === day; });
   var hereHtml = here.length ? '<p class="lab">Already on this day</p><ul class="upnext sched">' + here.map(function (s) {
     var role = s.post === day && s.shoot === day ? 'Shoot + post' : s.post === day ? 'Post' : 'Shoot';
@@ -2416,7 +2445,8 @@ function dayModalRender() {
   }
   el.className = 'on';
   el.innerHTML = '<div class="veil" data-cdayclose="1"></div><div class="dm" role="dialog" aria-modal="true"><button class="btn x" data-cdayclose="1" aria-label="Close">×</button>' +
-    '<h3>' + esc(niceLong(day)) + '</h3>' + hereHtml + recs + '</div>';
+    '<h3>' + esc(niceLong(day)) + '</h3>' + dayNoteHtml(day) + hereHtml + recs + '</div>';
+  if (draft) document.getElementById('dnnew').value = draft;
 }
 function coverHtml(u, title, wide) {
   if (window.__LOCAL) return '<blockquote class="instagram-media" data-instgrm-permalink="' + esc(u) + '" data-instgrm-version="14" style="background:#fff;border:1px solid var(--line);margin:12px 0 6px;max-width:' + (wide ? 540 : 340) + 'px;min-width:260px;padding:0;width:100%"><a href="' + esc(u) + '" target="_blank" rel="noopener" style="display:block;padding:40px 0;text-align:center;color:#000">View this post on Instagram</a></blockquote>';
@@ -2491,7 +2521,8 @@ document.addEventListener('click', function (e) {
   if ((b = t.closest('[data-bd]'))) { if (!b.disabled) bdButton(b.getAttribute('data-bd')); return; }
   if ((b = t.closest('[data-mbclose]'))) { MB.view = null; mbShow(); return; }
   if ((b = t.closest('[data-mbstep]'))) { if (MB.view) { MB.view.at += +b.getAttribute('data-mbstep'); mbShow(); } return; }
-  if ((b = t.closest('[data-mbboard]'))) { openBoard(b.getAttribute('data-mbboard')); return; }
+  if ((b = t.closest('[data-mbboard]'))) { noteAdd(); openBoard(b.getAttribute('data-mbboard')); return; }
+  if ((b = t.closest('[data-dnadd]'))) { noteAdd(); return; }
   if ((b = t.closest('[data-fav]'))) { favToggle(b.getAttribute('data-fav'), b.getAttribute('data-favidea')); return; }
   if ((b = t.closest('[data-tadd]'))) { var ai = IDEA_BY[CT.open], ni2 = document.getElementById('tnewmicro'); if (ai && ni2 && ni2.value.trim()) { var added = ai.micro.concat([ni2.value.trim()]); ni2.value = ''; ni2.blur(); tagSave(ai, 'micro', added); } return; }
   if ((b = t.closest('[data-authopen]'))) { AUTH.open = true; AUTH.msg = ''; stamp(); var am = document.getElementById('authmail'); if (am) am.focus(); return; }
@@ -2514,9 +2545,9 @@ document.addEventListener('click', function (e) {
     if (n === 0) { CT.month = null; CT.day = null; } else { var d = new Date(y, m - 1 + n, 1); CT.month = d.getFullYear() + '-' + pad2(d.getMonth() + 1); }
     show(); return;
   }
-  if ((b = t.closest('[data-cdayclose]'))) { CT.dayModal = false; dayModalRender(); return; }
+  if ((b = t.closest('[data-cdayclose]'))) { noteAdd(); CT.dayModal = false; dayModalRender(); return; }
   if ((b = t.closest('[data-cmore]'))) { CT.dayN = (CT.dayN || 6) + 6; dayModalRender(); return; }
-  if ((b = t.closest('[data-cpick]'))) { if (DB) { planIdeaOn(b.getAttribute('data-cpick'), selDay()); CT.dayModal = false; dayModalRender(); } return; }
+  if ((b = t.closest('[data-cpick]'))) { if (DB) { noteAdd(); planIdeaOn(b.getAttribute('data-cpick'), selDay()); CT.dayModal = false; dayModalRender(); } return; }
   if ((b = t.closest('[data-ttog]'))) { var tk = b.getAttribute('data-ttog'); CT.tg[tk] = !CT.tg[tk]; drawerRender(); return; }
   if ((b = t.closest('[data-ttag]'))) {
     var ti = IDEA_BY[CT.open], tf = b.getAttribute('data-ttag'), tv = b.getAttribute('data-tval');
@@ -2542,10 +2573,12 @@ document.addEventListener('keydown', function (e) {
     return;
   }
   if (BD.id) { bdKey(e); return; }
+  if (e.key === 'Enter' && !e.isComposing && e.target.id === 'dnnew') { noteAdd(); return; }
+  if (e.key === 'Enter' && !e.isComposing && e.target.getAttribute && e.target.getAttribute('data-dnote')) { e.target.blur(); return; }
   if (e.key === 'Enter' && e.target.id === 'tnewmicro') { document.querySelector('[data-tadd]').click(); return; }
   if (e.key === 'Enter' && e.target.id === 'authmail') { document.querySelector('[data-authsend]').click(); return; }
   if (e.key === 'Escape' && CT.open) { CT.open = null; drawerRender(); return; }
-  if (e.key === 'Escape' && CT.dayModal) { CT.dayModal = false; dayModalRender(); return; }
+  if (e.key === 'Escape' && CT.dayModal) { noteAdd(); CT.dayModal = false; dayModalRender(); return; }
   if (e.key === 'Enter' && e.target.getAttribute && e.target.getAttribute('data-day')) { CT.day = e.target.getAttribute('data-day'); CT.dayModal = true; CT.dayN = 6; show(); }
 });
 document.addEventListener('input', function (e) {
@@ -2555,6 +2588,8 @@ document.addEventListener('input', function (e) {
 });
 document.addEventListener('change', function (e) {
   var t = e.target, f = t.getAttribute && t.getAttribute('data-cf');
+  var note = t.getAttribute && t.getAttribute('data-dnote');
+  if (note) { if (DB && t.value.trim()) { t.defaultValue = t.value.trim(); put('items', note, { text: t.value.trim() }); } else t.value = t.defaultValue; return; }
   if (f) { CT[t.getAttribute('data-fk')][f] = t.value; show(); return; }
   var c = t.getAttribute && t.getAttribute('data-cs');
   if (c && DB) { var d = {}; d[c] = t.value; put('items', t.getAttribute('data-sid'), d); }
