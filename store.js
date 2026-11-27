@@ -15,7 +15,10 @@
     data._pending = {};
     COLS.forEach(function (c) { (data[c] || []).forEach(function (d) { data._pending[c + '/' + d.id] = n++; }); });
   }
-  try { session = JSON.parse(localStorage.getItem(SKEY) || 'null'); } catch (e) { }
+  // another open tab may have renewed or ended the login, so always use the newest saved one
+  var stored = true;
+  function loadSession() { if (!stored) return; try { session = JSON.parse(localStorage.getItem(SKEY) || 'null'); } catch (e) { } if (!session) member = null; }
+  loadSession();
 
   // the sign-in email link comes back with the login in the address; keep it and clean the address
   if (/(^#|&)(access_token|error_description)=/.test(location.hash)) {
@@ -28,7 +31,7 @@
   }
 
   function save() { try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) { problem = 'This browser is not letting the page save.'; } }
-  function saveSession() { try { if (session) localStorage.setItem(SKEY, JSON.stringify(session)); else localStorage.removeItem(SKEY); } catch (e) { } }
+  function saveSession() { try { if (session) localStorage.setItem(SKEY, JSON.stringify(session)); else localStorage.removeItem(SKEY); stored = true; } catch (e) { stored = false; } }
   function rows(c) { return data[c] = data[c] || []; }
   function find(c, id) { return rows(c).filter(function (x) { return x.id === id; })[0]; }
   function copy(o) { return JSON.parse(JSON.stringify(o)); }
@@ -50,6 +53,7 @@
   }
   // keeps the login fresh, and finds out who it is and whether they may save
   function ready() {
+    loadSession();
     if (!session) return Promise.resolve(false);
     var p = Promise.resolve();
     if (Date.now() > session.until - 60000) {
