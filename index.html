@@ -265,7 +265,7 @@ body .tpanel .pill{min-height:30px;padding:4px 10px;font-size:12px;line-height:1
 body.boarding{overflow:hidden}
 #boardpage{position:fixed;inset:0;z-index:55;display:flex;flex-direction:column;background:linear-gradient(160deg,#4a6180,#222d3d);color:var(--fg)}
 #boardpage .bhead{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;padding:10px 14px;border-bottom:1px solid var(--line)}
-#boardpage .btitle{flex:1;min-width:160px}#boardpage .btitle span{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.65}#boardpage .btitle h2{margin:0;font-size:19px;line-height:1.2}
+#boardpage .btitle{flex:1;min-width:160px}#boardpage .btitle span{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.65}#boardpage .btitle h2{margin:0;font-size:19px;line-height:1.2;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;overflow-wrap:anywhere}
 #boardpage .btools{display:flex;flex-wrap:wrap;align-items:center;gap:6px}#boardpage .bzoom{min-width:44px;text-align:center;font-size:12px}
 #boardpage .bstage{position:relative;flex:1;overflow:hidden;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none;outline:0;background-image:radial-gradient(rgba(255,255,255,.17) 1px,transparent 1.5px)}
 #boardpage .bstage.grabbing{cursor:grabbing}
@@ -302,6 +302,7 @@ body.boarding{overflow:hidden}
 #daymodal .dnrow input { flex: 1; min-width: 0; padding: 9px 12px; font: inherit; font-size: 16px; color: var(--fg); background: rgba(255,255,255,.07); border: 1px solid var(--line); border-radius: 10px; }
 #daymodal .dnrow input::placeholder { color: var(--fg); opacity: .5; }
 #daymodal .dnrow .btn { flex: none; min-width: 92px; }
+@media (max-width: 600px) { #daymodal .dnrow.saved { flex-wrap: wrap; justify-content: flex-end; margin-top: 14px; } #daymodal .dnrow.saved input { flex-basis: 100%; } }
 .dgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 400px), 1fr)); gap: 24px; align-items: start; }
 .dcard { min-width: 0; border-top: 2px solid var(--fg); padding-top: 10px; }
 .dhead { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
@@ -1447,6 +1448,17 @@ function mbFolders(i) {
   out.push(i.id);
   return out;
 }
+// a board belongs to an idea, or to a placeholder on a day ("note-" + its id)
+function bdAbout(key) {
+  var i = IDEA_BY[key];
+  if (i) return { label: 'Moodboard', name: i.name, folders: mbFolders(i) };
+  var m = /^note-([\w-]+)$/.exec(key || ''); if (!m) return null;
+  var n = dayNotes().filter(function (x) { return x.id === m[1]; })[0];
+  return { label: n ? 'Moodboard · ' + niceLong(n.day) : 'Moodboard', name: n ? n.text : 'Placeholder', folders: ['n-' + m[1]] };
+}
+function notePics(noteId) {
+  return itemsOf('board-pic').filter(function (x) { return String(x.path).indexOf('n-' + noteId + '/') === 0; }).length;
+}
 function mbWords(e) {
   var m = (e && e.message) || 'Something went wrong.';
   if (/bucket not found/i.test(m)) return 'Picture storage is not set up yet. Run the moodboard setup code in Supabase.';
@@ -1465,7 +1477,7 @@ function bdSave(p) {
 function bdSpot(n) { return { x: (n % 4) * 350, y: Math.floor(n / 4) * 440, w: 320, z: n }; }
 
 function openBoard(id) {
-  if (!IDEA_BY[id]) return;
+  if (!bdAbout(id)) return;
   BD.from = { open: CT.open, day: CT.dayModal, pushed: true };
   location.hash = 'board/' + id;
 }
@@ -1474,7 +1486,7 @@ function closeBoard() {
   else location.hash = 'content';
 }
 function boardRoute() {
-  var m = /^#board\/([\w-]+)$/.exec(location.hash), id = m && IDEA_BY[m[1]] ? m[1] : null;
+  var m = /^#board\/([\w-]+)$/.exec(location.hash), id = m && bdAbout(m[1]) ? m[1] : null;
   if (id === BD.id) return;
   if (BD.id) bdTeardown();
   if (id) bdBuild(id);
@@ -1490,12 +1502,12 @@ function bdTeardown() {
   show();
 }
 function bdBuild(id) {
-  var i = IDEA_BY[id];
+  var about = bdAbout(id);
   CT.open = null; CT.dayModal = false; drawerRender(); dayModalRender();
   BD.id = id; BD.items = []; BD.nodes = {}; BD.gone = {}; BD.sel = null; BD.armed = false; BD.msg = ''; BD.busy = ''; BD.loaded = false; BD.loading = false; BD.touched = false; BD.view = { x: 0, y: 0, k: 1 };
   var el = BD.el = document.createElement('div');
   el.id = 'boardpage';
-  el.innerHTML = '<div class="bhead"><button class="btn" data-bd="back">← Back</button><div class="btitle"><span>Moodboard</span><h2>' + esc(i.name) + '</h2></div>' +
+  el.innerHTML = '<div class="bhead"><button class="btn" data-bd="back">← Back</button><div class="btitle"><span>' + esc(about.label) + '</span><h2>' + esc(about.name) + '</h2></div>' +
     '<div class="btools"><button class="btn" data-bd="add">+ Add pictures</button><button class="btn" data-bd="out" aria-label="Zoom out">−</button><span class="bzoom"></span><button class="btn" data-bd="in" aria-label="Zoom in">+</button><button class="btn" data-bd="fit">Fit all</button></div></div>' +
     '<div class="bstage" tabindex="0" aria-label="Moodboard canvas"><div class="bworld"></div><div class="bempty"></div><div class="bbar"></div><div class="bnote" role="status"></div></div>';
   document.body.appendChild(el);
@@ -1506,13 +1518,13 @@ function bdBuild(id) {
 }
 // get the newest layout first, then the pictures; nothing can be moved until both are in
 function bdLoad() {
-  var id = BD.id, run = BD.run, i = IDEA_BY[id];
+  var id = BD.id, run = BD.run;
   if (!id || BD.loading || !mbSigned()) { bdChrome(); return; }
   BD.loading = true; bdChrome();
   var started = Date.now();
   STORE.refresh().then(function () {
     if (!STORE.synced()) throw new Error('Could not load the saved layout. Check your connection and sign-in.');
-    return Promise.all(mbFolders(i).map(function (f) { return STORE.files.list(f); }));
+    return Promise.all(bdAbout(id).folders.map(function (f) { return STORE.files.list(f); }));
   }).then(function (lists) {
     var paths = [].concat.apply([], lists).sort(function (a, b) { return a.split('/').pop() < b.split('/').pop() ? -1 : 1; });
     var had = {}; BD.items.forEach(function (p) { had[p.path] = p; });
@@ -1585,6 +1597,8 @@ function bdFit() {
 function bdFitSoon() { if (BD.id && !BD.touched) requestAnimationFrame(function () { if (BD.id && !BD.touched) bdFit(); }); }
 function bdChrome() {
   if (!BD.id) return;
+  var about = bdAbout(BD.id);
+  BD.el.querySelector('.btitle span').textContent = about.label; BD.el.querySelector('.btitle h2').textContent = about.name;
   var signed = mbSigned(), empty = BD.el.querySelector('.bempty'), bar = BD.el.querySelector('.bbar');
   var wrong = !signed && window.STORE && STORE.status().signedIn;
   empty.innerHTML = !signed ? '<p>' + (wrong ? 'This email is not on the list of people who can see the pictures.' : 'Sign in to see and add pictures.') + '</p><button class="btn" data-bd="signin">' + (wrong ? 'Go back' : 'Go to sign in') + '</button>'
@@ -1634,7 +1648,7 @@ function mbShrink(file) {
 // point = where on the screen the pictures were dropped; otherwise the middle of what you can see
 function bdUpload(list, point) {
   if (!BD.id || !list.length || BD.busy || !BD.loaded || !mbSigned()) return;
-  var id = BD.id, run = BD.run, folder = mbFolders(IDEA_BY[id])[0], problems = [], r = BD.stage.getBoundingClientRect();
+  var id = BD.id, run = BD.run, folder = bdAbout(id).folders[0], problems = [], r = BD.stage.getBoundingClientRect();
   var sx = point ? point.x - r.left : r.width / 2, sy = point ? point.y - r.top : r.height / 2;
   var cx = (sx - BD.view.x) / BD.view.k, cy = (sy - BD.view.y) / BD.view.k;
   var wasEmpty = !BD.items.length; BD.touched = !wasEmpty; BD.msg = '';
@@ -1939,7 +1953,8 @@ function noteAdd() {
 function dayNoteHtml(day) {
   var off = DB ? '' : ' disabled';
   return '<div class="dnotes"><p class="lab">Placeholder</p>' + dayNotes(day).map(function (n) {
-    return '<div class="dnrow"><input type="text" maxlength="200" data-dnote="' + esc(n.id) + '" value="' + esc(n.text) + '" aria-label="Placeholder text"' + off + '><button class="btn" data-cunplan="' + esc(n.id) + '"' + off + '>Remove</button></div>';
+    var pics = notePics(n.id);
+    return '<div class="dnrow saved"><input type="text" maxlength="200" data-dnote="' + esc(n.id) + '" value="' + esc(n.text) + '" aria-label="Placeholder text"' + off + '><button class="btn" data-mbboard="note-' + esc(n.id) + '">Moodboard' + (pics ? ' · ' + pics : '') + '</button><button class="btn" data-cunplan="' + esc(n.id) + '" data-pics="' + pics + '"' + off + '>Remove</button></div>';
   }).join('') + '<div class="dnrow"><input type="text" maxlength="200" id="dnnew" data-nday="' + day + '" placeholder="Type anything, even with no idea yet" aria-label="New placeholder text"' + off + '><button class="btn" data-dnadd="1"' + off + '>Add</button></div></div>';
 }
 function calendarMod() {
@@ -2560,7 +2575,16 @@ document.addEventListener('click', function (e) {
   if ((b = t.closest('[data-cref]'))) { CT.ref = +b.getAttribute('data-cref'); drawerRender(); return; }
   if ((b = t.closest('[data-cplanday]'))) { if (DB) planIdeaOn(b.getAttribute('data-cplanday'), selDay()); return; }
   if ((b = t.closest('[data-cplan]'))) { if (DB) planIdea(b.getAttribute('data-cplan')); return; }
-  if ((b = t.closest('[data-cunplan]'))) { if (DB) del('items', b.getAttribute('data-cunplan')); return; }
+  if ((b = t.closest('[data-cunplan]'))) {
+    // removing a placeholder also takes away the way into its pictures, so that takes a second tap
+    if (+b.getAttribute('data-pics') && !b.hasAttribute('data-armed')) {
+      var arm = b; arm.setAttribute('data-armed', '1'); arm.textContent = 'Lose its moodboard too?';
+      setTimeout(function () { arm.removeAttribute('data-armed'); arm.textContent = 'Remove'; }, 5000);
+      return;
+    }
+    if (DB) del('items', b.getAttribute('data-cunplan'));
+    return;
+  }
   if ((b = t.closest('[data-cdone]'))) { var sid = b.getAttribute('data-cdone'), s = slots().filter(function (x) { return x.id === sid; })[0]; if (s && DB) put('items', sid, { done: !s.done }); return; }
   if ((b = t.closest('[data-cth]'))) { var f1 = CT[b.getAttribute('data-fk')], th = b.getAttribute('data-cth'); var at = f1.theme.indexOf(th); if (at >= 0) f1.theme.splice(at, 1); else f1.theme.push(th); show(); return; }
   if ((b = t.closest('[data-cflt]'))) { var f2 = CT[b.getAttribute('data-fk')], k = b.getAttribute('data-cflt'); f2[k] = !f2[k]; show(); return; }
