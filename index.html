@@ -247,6 +247,8 @@ form.inline input { flex: 1 1 140px; }
 .cover .play { position: absolute; left: 0; right: 0; bottom: 0; padding: 8px 10px; background: var(--fg); color: var(--bg); font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; }
 body.gal #purpose{display:none}body.gal .filters{margin-bottom:8px}
 body.gal .gfilters{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}body.gal .gfilters::-webkit-scrollbar{display:none}body.gal .gfilters .pill{flex:0 0 auto;white-space:nowrap}
+body .tpanel .tpills,body .tpanel .tbody{gap:5px}
+body .tpanel .pill{min-height:30px;padding:4px 10px;font-size:12px;line-height:1.25}
 .gbar{display:flex;gap:12px;align-items:center;justify-content:space-between;margin:0 0 10px}.gbar .note{margin:0}
 .gstage{position:relative;overflow:hidden;width:100%;touch-action:pan-y;cursor:grab;user-select:none;-webkit-user-select:none}.gstage.dragging{cursor:grabbing}
 .gcard{position:absolute;left:0;top:0;overflow:hidden;background:var(--soft);border:1px solid var(--line);will-change:transform}
@@ -2005,7 +2007,7 @@ function dayModalRender() {
   var here = slots().filter(function (s) { return s.post === day || s.shoot === day; });
   var hereHtml = here.length ? '<p class="lab">Already on this day</p><ul class="upnext sched">' + here.map(function (s) {
     var role = s.post === day && s.shoot === day ? 'Shoot + post' : s.post === day ? 'Post' : 'Shoot';
-    return '<li><div><b data-cidea="' + esc(s.ideaId) + '">' + esc(s.name) + '</b><div class="why"><span>' + role + '</span>' + (s.done ? '<span>posted</span>' : '') + '</div></div><span></span></li>';
+    return '<li><div><b data-cidea="' + esc(s.ideaId) + '">' + esc(s.name) + '</b><div class="why"><span>' + role + '</span>' + (s.done ? '<span>posted</span>' : '') + '</div></div><button class="btn" data-cunplan="' + esc(s.id) + '"' + (DB ? '' : ' disabled') + ' aria-label="Remove ' + esc(s.name) + ' from the plan">Remove</button></li>';
   }).join('') + '</ul>' : '';
   var recs = '';
   if (past) recs = '<p class="note">This day has passed. Pick a day from today on to get suggestions.</p>';
@@ -2034,7 +2036,10 @@ function previewHtml(i) {
 window.__TAGGER = false;
 try { fetch('/api/ping').then(function (r) { return r.ok ? r.json() : null; }).then(function (j) { if (j && j.ok) { window.__TAGGER = true; drawerRender(); } }).catch(function () { }); } catch (e) { }
 function tagPanel(i) {
-  var chk = function (field, val, label, on) { return '<button class="pill" data-ttag="' + field + '" data-tval="' + esc(val) + '" aria-pressed="' + on + '">' + esc(label) + '</button>'; };
+  var chk = function (field, val, label, on) {
+    var brief = String(label).replace(/\s*\([^)]*\)\s*$/, '') || String(label);
+    return '<button class="pill" data-ttag="' + field + '" data-tval="' + esc(val) + '"' + (brief !== String(label) ? ' title="' + esc(label) + '"' : '') + ' aria-pressed="' + on + '">' + esc(brief) + '</button>';
+  };
   var themes = allThemes().map(function (t) { return chk('themes', t, t, i.themes.indexOf(t) >= 0); }).join('');
   var microAll = uniq('micro'); i.micro.forEach(function (m) { if (microAll.indexOf(m) < 0) microAll.push(m); });
   var locAll = uniq('location'); i.location.forEach(function (m) { if (locAll.indexOf(m) < 0) locAll.push(m); });
@@ -2074,7 +2079,7 @@ function drawerRender() {
   el.className = 'on';
   var code = videoCode(i.refs[Math.min(CT.ref, i.refs.length - 1)]);
   var fav = code ? '<div class="btnrow"><button class="btn favbtn" data-fav="' + code + '" data-favidea="' + i.id + '" aria-pressed="' + isFav(code) + '">' + (isFav(code) ? '♥ Favorited' : '♡ Favorite this video') + '</button></div>' : '';
-  var main = previewHtml(i) + fav + (other ? '<p class="note">' + other + '</p>' : '') + plan +
+  var main = plan + fav + previewHtml(i) + (other ? '<p class="note">' + other + '</p>' : '') +
     '<p class="note">Vault note: ' + esc(i.path) + '</p>';
   el.innerHTML = '<div class="veil" data-cclose="1"></div><div class="sheet wide"><button class="btn x" data-cclose="1" aria-label="Close">×</button><h3>' + esc(i.name) + '</h3>' +
     '<div class="tags">' + tags.map(function (t) { return '<span>' + esc(t) + '</span>'; }).join('') + (i.tagged ? '' : '<span>needs tagging</span>') + '</div>' +
