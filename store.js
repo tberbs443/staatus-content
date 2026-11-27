@@ -107,8 +107,30 @@
     return busy;
   }
 
+  // moodboard pictures live in a private bucket: only people on the save list can see or change them
+  var BUCKET = 'moodboards';
+  function signedCall(path, opt) {
+    return ready().then(function (ok) { if (!ok) throw new Error('Sign in first.'); return call('/storage/v1/object' + path, opt, true); });
+  }
+  var files = {
+    list: function (folder) {
+      return signedCall('/list/' + BUCKET, { method: 'POST', body: JSON.stringify({ prefix: folder, limit: 100, offset: 0, sortBy: { column: 'name', order: 'asc' } }) })
+        .then(function (list) { return (list || []).filter(function (f) { return f.id && f.name.charAt(0) !== '.'; }).map(function (f) { return folder + '/' + f.name; }); });
+    },
+    // temporary private links (one hour) so the pictures can be shown
+    sign: function (paths) {
+      if (!paths.length) return Promise.resolve({});
+      return signedCall('/sign/' + BUCKET, { method: 'POST', body: JSON.stringify({ expiresIn: 3600, paths: paths }) }).then(function (list) {
+        var out = {}; (list || []).forEach(function (r) { if (r.signedURL) out[r.path] = url + '/storage/v1' + r.signedURL; }); return out;
+      });
+    },
+    upload: function (path, blob) { return signedCall('/' + BUCKET + '/' + path, { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: blob }); },
+    remove: function (paths) { return signedCall('/' + BUCKET, { method: 'DELETE', body: JSON.stringify({ prefixes: paths }) }); }
+  };
+
   var STORE = window.STORE = {
     onStatus: null,
+    files: files,
     status: function () {
       var wait = Object.keys(data._pending).length, w = wait ? wait + (wait === 1 ? ' change' : ' changes') : '';
       if (!on) return { text: problem || 'Saved in this browser only.', signedIn: false, canSignIn: false };

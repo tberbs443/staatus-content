@@ -259,6 +259,12 @@ body .tpanel .pill{min-height:30px;padding:4px 10px;font-size:12px;line-height:1
 .gheart{position:absolute;top:8px;right:8px;z-index:2;width:34px;height:34px;border-radius:50%;border:0;padding:0;background:rgba(0,0,0,.55);color:#fff;font-size:18px;line-height:34px;text-align:center;cursor:pointer}.gheart[aria-pressed=true]{background:#fff;color:#c4122f}
 .favbtn[aria-pressed=true]{font-weight:700}.tnew{display:flex;gap:6px;width:100%;margin-top:8px}.tnew input{flex:1;min-width:0}
 #stamp .btn{margin-left:8px;font-style:normal}#stamp .authrow{display:inline-flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;margin-left:8px}
+.dmbtns{display:flex;gap:8px}#mboard:not(:empty){margin:16px 0 8px}#mboard .lab{margin:0 0 6px}
+.mbgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:6px;margin:6px 0 4px}
+.mbthumb{aspect-ratio:1;padding:0;border:1px solid var(--line);background:var(--soft);cursor:pointer;overflow:hidden}.mbthumb img{display:block;width:100%;height:100%;object-fit:cover}
+#mblight{position:fixed;inset:0;z-index:60;display:none}#mblight.on{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:16px}
+#mblight .mbveil{position:absolute;inset:0;background:rgba(0,0,0,.92)}#mblight img{position:relative;max-width:100%;max-height:calc(100% - 70px);object-fit:contain}
+#mblight .mbbar{position:relative;display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center;color:#fff;font-size:13px}
 .igfail { margin: 12px 0 6px; padding: 14px; border: 1px solid var(--line); background: var(--soft); }
 .igfail p { margin: 0 0 10px; font-size: 13px; }
 .cover .nocover { display: flex; align-items: center; justify-content: center; min-height: 120px; padding: 16px; text-decoration: underline; }
@@ -1404,6 +1410,123 @@ function tagStore(i, field, value) {
   CT.tmsg = 'Saved.';
   dbWrite(function () { return DB.collection('tags').doc(i.id).set({ ideaId: i.id, path: i.path, name: i.name, fields: fields }); });
 }
+// ---------- moodboards: pictures saved with an idea ----------
+var MB = { cache: {}, busy: {}, err: {}, target: null, view: null, who: false };
+function mbSigned() { return !!(window.STORE && STORE.status().signedIn && STORE.status().text.indexOf('not on the list') < 0); }
+// saved under the video, so renaming or moving the note in Obsidian does not lose the pictures
+function mbFolders(i) {
+  var out = [];
+  i.refs.forEach(function (u) { var c = videoCode(u); if (c && out.indexOf('v-' + c) < 0) out.push('v-' + c); });
+  out.push(i.id);
+  return out;
+}
+function mbWords(e) {
+  var m = (e && e.message) || 'Something went wrong.';
+  if (/bucket not found/i.test(m)) return 'Picture storage is not set up yet. Run the moodboard setup code in Supabase.';
+  if (/row-level|not authorized|unauthorized|policy/i.test(m)) return 'This sign-in is not allowed to save pictures.';
+  return m;
+}
+function mbInner(i) {
+  var planned = !!slotFor(i.id), c = MB.cache[i.id], items = (c && c.items) || [];
+  if (!mbSigned()) return planned ? '<p class="lab">Moodboard</p><p class="note">Sign in at the top of the page to see and add pictures.</p>' : '';
+  if (!planned && !items.length) return '';
+  var grid = items.length ? '<div class="mbgrid">' + items.map(function (p, n) {
+    return '<button class="mbthumb" data-mbopen="' + n + '" aria-label="Open picture ' + (n + 1) + '"><img src="' + esc(p.url) + '" alt="Moodboard picture ' + (n + 1) + '" loading="lazy"></button>';
+  }).join('') + '</div>' : '';
+  var line = MB.busy[i.id] || MB.err[i.id] || (c && c.error) || (!c || (c.loading && !c.at) ? 'Loading pictures…' : '');
+  return '<p class="lab">Moodboard' + (items.length ? ' · ' + items.length : '') + '</p>' + grid +
+    '<div class="btnrow"><button class="btn" data-mbadd="' + i.id + '"' + (MB.busy[i.id] ? ' disabled' : '') + '>+ Add pictures</button></div>' +
+    (line ? '<p class="note" role="status">' + esc(line) + '</p>' : '');
+}
+// redraws only the board, so the video above or below it keeps playing
+function mbPaint(id) {
+  var el = document.getElementById('mboard');
+  if (el && el.getAttribute('data-mbfor') === id && IDEA_BY[id]) el.innerHTML = mbInner(IDEA_BY[id]);
+}
+function mbLoad(id, force) {
+  var i = IDEA_BY[id]; if (!i || !mbSigned()) return;
+  var c = MB.cache[id] = MB.cache[id] || { items: [], at: 0 };
+  if (c.loading || (!force && Date.now() - c.at < 60000)) return;
+  c.loading = true;
+  var had = {}; c.items.forEach(function (p) { had[p.path] = p; });
+  Promise.all(mbFolders(i).map(function (f) { return STORE.files.list(f); })).then(function (lists) {
+    var paths = [].concat.apply([], lists).sort(function (a, b) { return a.split('/')[1] < b.split('/')[1] ? -1 : 1; });
+    var need = paths.filter(function (p) { return !had[p] || Date.now() - had[p].signed > 3000000; });
+    return STORE.files.sign(need).then(function (links) {
+      if (MB.cache[id] !== c) return;
+      c.items = paths.map(function (p) { return links[p] ? { path: p, url: links[p], signed: Date.now() } : had[p]; }).filter(Boolean);
+      c.at = Date.now(); c.error = ''; c.loading = false; mbPaint(id);
+    });
+  }).catch(function (e) { c.loading = false; c.at = Date.now(); c.error = mbWords(e); mbPaint(id); });
+}
+// big phone photos are shrunk before upload (this also drops the location data inside them)
+function mbShrink(file) {
+  return new Promise(function (ok, no) {
+    var img = new Image(), src = URL.createObjectURL(file);
+    var bad = function () { URL.revokeObjectURL(src); no(new Error('Could not read ' + file.name + '. Use a JPG or PNG.')); };
+    img.onload = function () {
+      var k = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight)), cv = document.createElement('canvas');
+      cv.width = Math.max(1, Math.round(img.naturalWidth * k)); cv.height = Math.max(1, Math.round(img.naturalHeight * k));
+      var g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(img, 0, 0, cv.width, cv.height);
+      cv.toBlob(function (b) { if (!b) return bad(); URL.revokeObjectURL(src); ok(b); }, 'image/jpeg', 0.85);
+    };
+    img.onerror = bad;
+    img.src = src;
+  });
+}
+function mbUpload(id, list) {
+  var i = IDEA_BY[id]; if (!i || !list.length || MB.busy[id]) return;
+  var folder = mbFolders(i)[0], problems = [];
+  MB.err[id] = '';
+  list.reduce(function (chain, file, n) {
+    return chain.then(function () {
+      MB.busy[id] = 'Uploading ' + (n + 1) + ' of ' + list.length + '…'; mbPaint(id);
+      return mbShrink(file).then(function (blob) {
+        return STORE.files.upload(folder + '/' + Date.now() + '-' + Math.random().toString(36).slice(2, 7) + '.jpg', blob);
+      }).catch(function (e) { problems.push(mbWords(e)); });
+    });
+  }, Promise.resolve()).then(function () {
+    MB.busy[id] = '';
+    MB.err[id] = problems.length ? problems.length + ' of ' + list.length + ' did not upload. ' + problems[0] : '';
+    mbPaint(id); mbLoad(id, true);
+  });
+}
+// one file chooser that lives outside the panel, so a redraw cannot drop what you picked
+function mbPick(id) {
+  var inp = document.getElementById('mbfile');
+  if (!inp) {
+    inp = document.createElement('input'); inp.type = 'file'; inp.id = 'mbfile'; inp.accept = 'image/*'; inp.multiple = true; inp.hidden = true;
+    inp.addEventListener('change', function () { var got = [].slice.call(inp.files); inp.value = ''; mbUpload(MB.target, got); });
+    document.body.appendChild(inp);
+  }
+  MB.target = id; inp.click();
+}
+function mbShow() {
+  var el = document.getElementById('mblight'); if (!el) { el = document.createElement('div'); el.id = 'mblight'; document.body.appendChild(el); }
+  var v = MB.view, items = v && MB.cache[v.id] ? MB.cache[v.id].items : [];
+  if (!v || !items.length) { MB.view = null; el.className = ''; el.innerHTML = ''; return; }
+  v.at = (v.at + items.length) % items.length;
+  el.className = 'on';
+  el.innerHTML = '<div class="mbveil" data-mbclose="1"></div><img src="' + esc(items[v.at].url) + '" alt="Moodboard picture ' + (v.at + 1) + '">' +
+    '<div class="mbbar">' + (items.length > 1 ? '<button class="btn" data-mbstep="-1" aria-label="Previous picture">←</button><span>' + (v.at + 1) + ' of ' + items.length + '</span><button class="btn" data-mbstep="1" aria-label="Next picture">→</button>' : '') +
+    '<button class="btn" data-mbremove="1">' + (v.armed ? 'Tap again to delete for good' : 'Remove') + '</button><button class="btn" data-mbclose="1">Close</button></div>';
+}
+function mbRemove() {
+  var v = MB.view; if (!v) return;
+  if (!v.armed) { v.armed = true; mbShow(); return; }
+  var id = v.id, p = MB.cache[id].items[v.at];
+  v.armed = false;
+  STORE.files.remove([p.path]).then(function () {
+    MB.cache[id].items = MB.cache[id].items.filter(function (x) { return x.path !== p.path; });
+    MB.err[id] = ''; mbShow(); mbPaint(id);
+  }, function (e) { MB.err[id] = 'Not removed: ' + mbWords(e); MB.view = null; mbShow(); mbPaint(id); });
+}
+// signing in or out changes what the board may show
+function mbAuth() {
+  var now = mbSigned(); if (now === MB.who) return;
+  MB.who = now; MB.cache = {}; MB.err = {}; MB.view = null; mbShow();
+  if (CT.open) { mbPaint(CT.open); mbLoad(CT.open); }
+}
 function videoCode(u) { var m = /instagram\.com\/(?:[\w.]+\/)?(?:p|reel|tv)\/([\w-]+)/.exec(u || ''); return m ? m[1] : ''; }
 function isFav(code) { return (STATE.favorites || []).some(function (x) { return x.id === code; }); }
 function favToggle(code, ideaId) {
@@ -2007,7 +2130,7 @@ function dayModalRender() {
   var here = slots().filter(function (s) { return s.post === day || s.shoot === day; });
   var hereHtml = here.length ? '<p class="lab">Already on this day</p><ul class="upnext sched">' + here.map(function (s) {
     var role = s.post === day && s.shoot === day ? 'Shoot + post' : s.post === day ? 'Post' : 'Shoot';
-    return '<li><div><b data-cidea="' + esc(s.ideaId) + '">' + esc(s.name) + '</b><div class="why"><span>' + role + '</span>' + (s.done ? '<span>posted</span>' : '') + '</div></div><button class="btn" data-cunplan="' + esc(s.id) + '"' + (DB ? '' : ' disabled') + ' aria-label="Remove ' + esc(s.name) + ' from the plan">Remove</button></li>';
+    return '<li><div><b data-cidea="' + esc(s.ideaId) + '">' + esc(s.name) + '</b><div class="why"><span>' + role + '</span>' + (s.done ? '<span>posted</span>' : '') + '</div></div><div class="dmbtns">' + (IDEA_BY[s.ideaId] ? '<button class="btn" data-mbboard="' + esc(s.ideaId) + '">Moodboard</button>' : '') + '<button class="btn" data-cunplan="' + esc(s.id) + '"' + (DB ? '' : ' disabled') + ' aria-label="Remove ' + esc(s.name) + ' from the plan">Remove</button></div></li>';
   }).join('') + '</ul>' : '';
   var recs = '';
   if (past) recs = '<p class="note">This day has passed. Pick a day from today on to get suggestions.</p>';
@@ -2079,17 +2202,23 @@ function drawerRender() {
   el.className = 'on';
   var code = videoCode(i.refs[Math.min(CT.ref, i.refs.length - 1)]);
   var fav = code ? '<div class="btnrow"><button class="btn favbtn" data-fav="' + code + '" data-favidea="' + i.id + '" aria-pressed="' + isFav(code) + '">' + (isFav(code) ? '♥ Favorited' : '♡ Favorite this video') + '</button></div>' : '';
-  var main = plan + fav + previewHtml(i) + (other ? '<p class="note">' + other + '</p>' : '') +
+  var main = plan + fav + '<div id="mboard" data-mbfor="' + i.id + '">' + mbInner(i) + '</div>' + previewHtml(i) + (other ? '<p class="note">' + other + '</p>' : '') +
     '<p class="note">Vault note: ' + esc(i.path) + '</p>';
   el.innerHTML = '<div class="veil" data-cclose="1"></div><div class="sheet wide"><button class="btn x" data-cclose="1" aria-label="Close">×</button><h3>' + esc(i.name) + '</h3>' +
     '<div class="tags">' + tags.map(function (t) { return '<span>' + esc(t) + '</span>'; }).join('') + (i.tagged ? '' : '<span>needs tagging</span>') + '</div>' +
     '<div class="tgrid">' + tagPanel(i) + '<div style="min-width:0">' + main + '</div></div></div>';
-  igProcess();
+  igProcess(); mbLoad(i.id);
 }
 document.addEventListener('click', function (e) {
   var t = e.target, b;
   if ((b = t.closest('[data-gth]'))) { var gth = b.getAttribute('data-gth'), gi = CT.gth.indexOf(gth); if (!gth) CT.gth = []; else if (gi >= 0) CT.gth.splice(gi, 1); else CT.gth.push(gth); GL.offset = 0; var sx = (document.querySelector('.gfilters') || {}).scrollLeft || 0; show(); var gf = document.querySelector('.gfilters'); if (gf) gf.scrollLeft = sx; return; }
   if ((b = t.closest('[data-gpause]'))) { GL.paused = !GL.paused; b.textContent = GL.paused ? 'Play' : 'Pause'; b.setAttribute('aria-pressed', GL.paused); return; }
+  if ((b = t.closest('[data-mbadd]'))) { mbPick(b.getAttribute('data-mbadd')); return; }
+  if ((b = t.closest('[data-mbopen]'))) { MB.view = { id: CT.open, at: +b.getAttribute('data-mbopen'), armed: false }; mbShow(); return; }
+  if ((b = t.closest('[data-mbclose]'))) { MB.view = null; mbShow(); return; }
+  if ((b = t.closest('[data-mbstep]'))) { if (MB.view) { MB.view.at += +b.getAttribute('data-mbstep'); MB.view.armed = false; mbShow(); } return; }
+  if ((b = t.closest('[data-mbremove]'))) { mbRemove(); return; }
+  if ((b = t.closest('[data-mbboard]'))) { CT.open = b.getAttribute('data-mbboard'); CT.ref = 0; drawerRender(); var mbe = document.getElementById('mboard'); if (mbe) mbe.scrollIntoView({ block: 'center' }); return; }
   if ((b = t.closest('[data-fav]'))) { favToggle(b.getAttribute('data-fav'), b.getAttribute('data-favidea')); return; }
   if ((b = t.closest('[data-tadd]'))) { var ai = IDEA_BY[CT.open], ni2 = document.getElementById('tnewmicro'); if (ai && ni2 && ni2.value.trim()) { var added = ai.micro.concat([ni2.value.trim()]); ni2.value = ''; ni2.blur(); tagSave(ai, 'micro', added); } return; }
   if ((b = t.closest('[data-authopen]'))) { AUTH.open = true; AUTH.msg = ''; stamp(); var am = document.getElementById('authmail'); if (am) am.focus(); return; }
@@ -2134,6 +2263,11 @@ document.addEventListener('click', function (e) {
   if ((b = t.closest('[data-day]'))) { CT.day = b.getAttribute('data-day'); CT.dayModal = true; CT.dayN = 6; show(); return; }
 });
 document.addEventListener('keydown', function (e) {
+  if (MB.view) {
+    if (e.key === 'Escape') { MB.view = null; mbShow(); }
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { MB.view.at += e.key === 'ArrowLeft' ? -1 : 1; MB.view.armed = false; mbShow(); }
+    return;
+  }
   if (e.key === 'Enter' && e.target.id === 'tnewmicro') { document.querySelector('[data-tadd]').click(); return; }
   if (e.key === 'Enter' && e.target.id === 'authmail') { document.querySelector('[data-authsend]').click(); return; }
   if (e.key === 'Escape' && CT.open) { CT.open = null; drawerRender(); return; }
@@ -2229,7 +2363,7 @@ function boot() {
         stamp(); render();
       });
     });
-    STORE.onStatus = function () { CONN = ''; stamp(); };
+    STORE.onStatus = function () { CONN = ''; stamp(); mbAuth(); };
   });
 }
 boot();
