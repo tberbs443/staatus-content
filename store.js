@@ -6,6 +6,7 @@
   var COLS = ['items', 'favorites', 'tags'];
   var cfg = window.__DB_CONFIG || {};
   var url = String(cfg.url || '').replace(/\/+$/, ''), key = String(cfg.key || '');
+  var synced = false; // true once the plan, favorites and layouts have been downloaded
   var on = !!(url && key);
   var data = {}, subs = {}, n = Date.now(), session = null, member = null, problem = '', busy = null, again = false;
   try { data = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { }
@@ -95,6 +96,7 @@
         var order = function (a) { return JSON.stringify(a.slice().sort(function (x, y) { return String(x.id) < String(y.id) ? -1 : 1; })); };
         if (order(next) !== order(rows(c))) { data[c] = next; save(); emit(c); }
       });
+      if (canWrite) synced = true;
     });
   }
   // upload what is waiting, then download; one run at a time
@@ -131,6 +133,8 @@
   var STORE = window.STORE = {
     onStatus: null,
     files: files,
+    refresh: function () { return flush(); },
+    synced: function () { return synced && !!session; },
     status: function () {
       var wait = Object.keys(data._pending).length, w = wait ? wait + (wait === 1 ? ' change' : ' changes') : '';
       if (!on) return { text: problem || 'Saved in this browser only.', signedIn: false, canSignIn: false };
@@ -142,7 +146,7 @@
       var back = location.origin + location.pathname;
       return call('/auth/v1/otp?redirect_to=' + encodeURIComponent(back), { method: 'POST', body: JSON.stringify({ email: email, create_user: true }) });
     },
-    signOut: function () { session = null; member = null; problem = ''; saveSession(); changedStatus(); }
+    signOut: function () { session = null; member = null; synced = false; problem = ''; saveSession(); changedStatus(); }
   };
 
   var db = { collection: function (c) { return {

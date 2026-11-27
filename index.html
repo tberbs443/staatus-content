@@ -259,9 +259,27 @@ body .tpanel .pill{min-height:30px;padding:4px 10px;font-size:12px;line-height:1
 .gheart{position:absolute;top:8px;right:8px;z-index:2;width:34px;height:34px;border-radius:50%;border:0;padding:0;background:rgba(0,0,0,.55);color:#fff;font-size:18px;line-height:34px;text-align:center;cursor:pointer}.gheart[aria-pressed=true]{background:#fff;color:#c4122f}
 .favbtn[aria-pressed=true]{font-weight:700}.tnew{display:flex;gap:6px;width:100%;margin-top:8px}.tnew input{flex:1;min-width:0}
 #stamp .btn{margin-left:8px;font-style:normal}#stamp .authrow{display:inline-flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;margin-left:8px}
-.dmbtns{display:flex;gap:8px}#mboard:not(:empty){margin:16px 0 8px}#mboard .lab{margin:0 0 6px}
-.mbgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:6px;margin:6px 0 4px}
-.mbthumb{aspect-ratio:1;padding:0;border:1px solid var(--line);background:var(--soft);cursor:pointer;overflow:hidden}.mbthumb img{display:block;width:100%;height:100%;object-fit:cover}
+.dmbtns{display:flex;gap:8px}
+body.boarding{overflow:hidden}
+#boardpage{position:fixed;inset:0;z-index:55;display:flex;flex-direction:column;background:linear-gradient(160deg,#4a6180,#222d3d);color:var(--fg)}
+#boardpage .bhead{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;padding:10px 14px;border-bottom:1px solid var(--line)}
+#boardpage .btitle{flex:1;min-width:160px}#boardpage .btitle span{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.65}#boardpage .btitle h2{margin:0;font-size:19px;line-height:1.2}
+#boardpage .btools{display:flex;flex-wrap:wrap;align-items:center;gap:6px}#boardpage .bzoom{min-width:44px;text-align:center;font-size:12px}
+#boardpage .bstage{position:relative;flex:1;overflow:hidden;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none;outline:0;background-image:radial-gradient(rgba(255,255,255,.17) 1px,transparent 1.5px)}
+#boardpage .bstage.grabbing{cursor:grabbing}
+#boardpage .bworld{position:absolute;left:0;top:0;width:0;height:0;transform-origin:0 0}
+#boardpage .bitem{position:absolute;cursor:move;background:rgba(255,255,255,.08);min-height:20px;box-shadow:0 6px 22px rgba(0,0,0,.3)}
+#boardpage .bitem img{display:block;width:100%;height:auto;pointer-events:none}
+#boardpage .bitem.sel{outline:calc(2px / var(--bk,1)) solid #fff}
+#boardpage .bh{display:none;position:absolute;width:calc(14px / var(--bk,1));height:calc(14px / var(--bk,1));background:#fff;border:calc(1px / var(--bk,1)) solid #1f2937;border-radius:50%}
+#boardpage .bh::after{content:"";position:absolute;inset:calc(-9px / var(--bk,1))}
+#boardpage .bitem.sel .bh{display:block}
+#boardpage .bh.nw{left:calc(-7px / var(--bk,1));top:calc(-7px / var(--bk,1));cursor:nwse-resize}#boardpage .bh.se{right:calc(-7px / var(--bk,1));bottom:calc(-7px / var(--bk,1));cursor:nwse-resize}
+#boardpage .bh.ne{right:calc(-7px / var(--bk,1));top:calc(-7px / var(--bk,1));cursor:nesw-resize}#boardpage .bh.sw{left:calc(-7px / var(--bk,1));bottom:calc(-7px / var(--bk,1));cursor:nesw-resize}
+#boardpage .bempty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:20px;text-align:center;pointer-events:none}#boardpage .bempty:empty{display:none}#boardpage .bempty .btn{pointer-events:auto}
+#boardpage .bbar{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);display:flex;flex-wrap:wrap;justify-content:center;gap:6px;width:max-content;max-width:calc(100% - 20px);padding:8px;border-radius:18px;background:rgba(10,16,26,.85);cursor:default}#boardpage .bbar:empty{display:none}
+#boardpage .bnote{position:absolute;left:12px;right:12px;top:10px;text-align:center;font-size:13px;pointer-events:none;text-shadow:0 1px 4px #000}
+@media (max-width:520px){#boardpage .btools{width:100%;flex-wrap:nowrap;gap:5px}#boardpage .btools .btn,#boardpage .bbar .btn{padding:7px 11px;font-size:13px;white-space:nowrap}#boardpage .bzoom{min-width:38px}}
 #mblight{position:fixed;inset:0;z-index:60;display:none}#mblight.on{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:16px}
 #mblight .mbveil{position:absolute;inset:0;background:rgba(0,0,0,.92)}#mblight img{position:relative;max-width:100%;max-height:calc(100% - 70px);object-fit:contain}
 #mblight .mbbar{position:relative;display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center;color:#fff;font-size:13px}
@@ -1410,8 +1428,9 @@ function tagStore(i, field, value) {
   CT.tmsg = 'Saved.';
   dbWrite(function () { return DB.collection('tags').doc(i.id).set({ ideaId: i.id, path: i.path, name: i.name, fields: fields }); });
 }
-// ---------- moodboards: pictures saved with an idea ----------
-var MB = { cache: {}, busy: {}, err: {}, target: null, view: null, who: false };
+// ---------- moodboard: its own page for each idea, with an open canvas ----------
+var BD = { id: null, el: null, stage: null, world: null, items: [], nodes: {}, view: { x: 0, y: 0, k: 1 }, sel: null, armed: false, msg: '', busy: '', loading: false, loaded: false, touched: false, gone: {}, from: null, pointers: {}, act: null, run: 0 };
+var MB = { view: null };
 function mbSigned() { return !!(window.STORE && STORE.status().signedIn && STORE.status().text.indexOf('not on the list') < 0); }
 // saved under the video, so renaming or moving the note in Obsidian does not lose the pictures
 function mbFolders(i) {
@@ -1426,107 +1445,363 @@ function mbWords(e) {
   if (/row-level|not authorized|unauthorized|policy/i.test(m)) return 'This sign-in is not allowed to save pictures.';
   return m;
 }
-function mbInner(i) {
-  var planned = !!slotFor(i.id), c = MB.cache[i.id], items = (c && c.items) || [];
-  if (!mbSigned()) return planned ? '<p class="lab">Moodboard</p><p class="note">Sign in at the top of the page to see and add pictures.</p>' : '';
-  if (!planned && !items.length) return '';
-  var grid = items.length ? '<div class="mbgrid">' + items.map(function (p, n) {
-    return '<button class="mbthumb" data-mbopen="' + n + '" aria-label="Open picture ' + (n + 1) + '"><img src="' + esc(p.url) + '" alt="Moodboard picture ' + (n + 1) + '" loading="lazy"></button>';
-  }).join('') + '</div>' : '';
-  var line = MB.busy[i.id] || MB.err[i.id] || (c && c.error) || (!c || (c.loading && !c.at) ? 'Loading pictures…' : '');
-  return '<p class="lab">Moodboard' + (items.length ? ' · ' + items.length : '') + '</p>' + grid +
-    '<div class="btnrow"><button class="btn" data-mbadd="' + i.id + '"' + (MB.busy[i.id] ? ' disabled' : '') + '>+ Add pictures</button></div>' +
-    (line ? '<p class="note" role="status">' + esc(line) + '</p>' : '');
+// where a picture sits is saved as its own small record, so moving one never overwrites another
+function bdLayoutId(path) { return 'bp-' + path.split('/').pop().replace(/\.\w+$/, ''); }
+function bdSaved(path) { var id = bdLayoutId(path); return (STATE.items || []).filter(function (x) { return x.id === id && x.kind === 'board-pic'; })[0]; }
+function bdSave(p) {
+  if (!DB) return;
+  var id = bdLayoutId(p.path), r = Math.round;
+  dbWrite(function () { return DB.collection('items').doc(id).set({ kind: 'board-pic', path: p.path, x: r(p.x), y: r(p.y), w: r(p.w), z: p.z, updatedAt: nowIso() }); });
 }
-// redraws only the board, so the video above or below it keeps playing
-function mbPaint(id) {
-  var el = document.getElementById('mboard');
-  if (el && el.getAttribute('data-mbfor') === id && IDEA_BY[id]) el.innerHTML = mbInner(IDEA_BY[id]);
+// a picture nobody has placed yet gets a fixed spot in a loose grid
+function bdSpot(n) { return { x: (n % 4) * 350, y: Math.floor(n / 4) * 440, w: 320, z: n }; }
+
+function openBoard(id) {
+  if (!IDEA_BY[id]) return;
+  BD.from = { open: CT.open, day: CT.dayModal, pushed: true };
+  location.hash = 'board/' + id;
 }
-function mbLoad(id, force) {
-  var i = IDEA_BY[id]; if (!i || !mbSigned()) return;
-  var c = MB.cache[id] = MB.cache[id] || { items: [], at: 0 };
-  if (c.loading || (!force && Date.now() - c.at < 60000)) return;
-  c.loading = true;
-  var had = {}; c.items.forEach(function (p) { had[p.path] = p; });
-  Promise.all(mbFolders(i).map(function (f) { return STORE.files.list(f); })).then(function (lists) {
-    var paths = [].concat.apply([], lists).sort(function (a, b) { return a.split('/')[1] < b.split('/')[1] ? -1 : 1; });
+function closeBoard() {
+  if (BD.from && BD.from.pushed) history.back();
+  else location.hash = 'content';
+}
+function boardRoute() {
+  var m = /^#board\/([\w-]+)$/.exec(location.hash), id = m && IDEA_BY[m[1]] ? m[1] : null;
+  if (id === BD.id) return;
+  if (BD.id) bdTeardown();
+  if (id) bdBuild(id);
+}
+function bdTeardown() {
+  BD.run++;
+  if (BD.el) BD.el.remove();
+  BD.el = BD.stage = BD.world = null; BD.id = null; BD.nodes = {}; BD.items = []; BD.act = null; BD.pointers = {};
+  MB.view = null; mbShow();
+  document.body.classList.remove('boarding');
+  var back = BD.from; BD.from = null;
+  if (back) { CT.open = back.open; CT.dayModal = back.day; CT.dmKey = null; }
+  show();
+}
+function bdBuild(id) {
+  var i = IDEA_BY[id];
+  CT.open = null; CT.dayModal = false; drawerRender(); dayModalRender();
+  BD.id = id; BD.items = []; BD.nodes = {}; BD.gone = {}; BD.sel = null; BD.armed = false; BD.msg = ''; BD.busy = ''; BD.loaded = false; BD.loading = false; BD.touched = false; BD.view = { x: 0, y: 0, k: 1 };
+  var el = BD.el = document.createElement('div');
+  el.id = 'boardpage';
+  el.innerHTML = '<div class="bhead"><button class="btn" data-bd="back">← Back</button><div class="btitle"><span>Moodboard</span><h2>' + esc(i.name) + '</h2></div>' +
+    '<div class="btools"><button class="btn" data-bd="add">+ Add pictures</button><button class="btn" data-bd="out" aria-label="Zoom out">−</button><span class="bzoom"></span><button class="btn" data-bd="in" aria-label="Zoom in">+</button><button class="btn" data-bd="fit">Fit all</button></div></div>' +
+    '<div class="bstage" tabindex="0" aria-label="Moodboard canvas"><div class="bworld"></div><div class="bempty"></div><div class="bbar"></div><div class="bnote" role="status"></div></div>';
+  document.body.appendChild(el);
+  document.body.classList.add('boarding');
+  BD.stage = el.querySelector('.bstage'); BD.world = el.querySelector('.bworld');
+  bdEvents(BD.stage);
+  bdApply(); bdChrome(); bdLoad();
+}
+// get the newest layout first, then the pictures; nothing can be moved until both are in
+function bdLoad() {
+  var id = BD.id, run = BD.run, i = IDEA_BY[id];
+  if (!id || BD.loading || !mbSigned()) { bdChrome(); return; }
+  BD.loading = true; bdChrome();
+  var started = Date.now();
+  STORE.refresh().then(function () {
+    if (!STORE.synced()) throw new Error('Could not load the saved layout. Check your connection and sign-in.');
+    return Promise.all(mbFolders(i).map(function (f) { return STORE.files.list(f); }));
+  }).then(function (lists) {
+    var paths = [].concat.apply([], lists).sort(function (a, b) { return a.split('/').pop() < b.split('/').pop() ? -1 : 1; });
+    var had = {}; BD.items.forEach(function (p) { had[p.path] = p; });
     var need = paths.filter(function (p) { return !had[p] || Date.now() - had[p].signed > 3000000; });
     return STORE.files.sign(need).then(function (links) {
-      if (MB.cache[id] !== c) return;
-      c.items = paths.map(function (p) { return links[p] ? { path: p, url: links[p], signed: Date.now() } : had[p]; }).filter(Boolean);
-      c.at = Date.now(); c.error = ''; c.loading = false; mbPaint(id);
+      if (run !== BD.run) return;
+      // anything uploaded while this list was on its way stays on the board
+      var added = BD.items.filter(function (p) { return p.added >= started && paths.indexOf(p.path) < 0; });
+      BD.items = paths.map(function (path, n) {
+        var p = had[path] || Object.assign({ path: path }, bdSpot(n));
+        if (links[path]) { p.url = links[path]; p.signed = Date.now(); }
+        return p;
+      }).filter(function (p) { return p.url && !BD.gone[p.path]; }).concat(added);
+      BD.loading = false; BD.loaded = true; BD.loadedAt = Date.now(); BD.msg = '';
+      bdSync(); bdFitSoon();
     });
-  }).catch(function (e) { c.loading = false; c.at = Date.now(); c.error = mbWords(e); mbPaint(id); });
+  }).catch(function (e) { if (run !== BD.run) return; BD.loading = false; BD.msg = mbWords(e); bdChrome(); });
+}
+// copies saved positions (mine or Conor's) onto the pictures on screen
+function bdSync() {
+  if (!BD.id) return;
+  var seen = {};
+  BD.items.forEach(function (p) {
+    if (!(BD.act && BD.act.item === p)) { var s = bdSaved(p.path); if (s) { p.x = s.x; p.y = s.y; p.w = s.w; p.z = s.z; } }
+    seen[p.path] = 1;
+    var n = BD.nodes[p.path];
+    if (!n) {
+      n = BD.nodes[p.path] = document.createElement('div'); n.className = 'bitem'; n.setAttribute('data-path', p.path);
+      n.innerHTML = '<img alt="Moodboard picture" draggable="false">' + ['nw', 'ne', 'sw', 'se'].map(function (c) { return '<i class="bh ' + c + '" data-corner="' + c + '"></i>'; }).join('');
+      n.firstChild.addEventListener('load', bdFitSoon);
+      BD.world.appendChild(n);
+    }
+    if (n.firstChild.getAttribute('src') !== p.url) n.firstChild.setAttribute('src', p.url);
+    bdPlace(p);
+  });
+  for (var k in BD.nodes) if (!seen[k]) { BD.nodes[k].remove(); delete BD.nodes[k]; }
+  if (BD.sel && !seen[BD.sel]) BD.sel = null;
+  bdChrome();
+}
+function bdPlace(p) {
+  var n = BD.nodes[p.path]; if (!n) return;
+  n.style.left = p.x + 'px'; n.style.top = p.y + 'px'; n.style.width = p.w + 'px'; n.style.zIndex = 1000 + p.z;
+  n.classList.toggle('sel', BD.sel === p.path);
+}
+function bdFind(path) { return BD.items.filter(function (p) { return p.path === path; })[0]; }
+function bdApply() {
+  var v = BD.view;
+  BD.world.style.transform = 'translate(' + v.x + 'px,' + v.y + 'px) scale(' + v.k + ')';
+  BD.world.style.setProperty('--bk', v.k);
+  var g = 28 * v.k; while (g < 18) g *= 2;
+  BD.stage.style.backgroundSize = g + 'px ' + g + 'px'; BD.stage.style.backgroundPosition = v.x + 'px ' + v.y + 'px';
+  var z = BD.el.querySelector('.bzoom'); z.textContent = Math.round(v.k * 100) + '%';
+}
+function bdZoom(f, sx, sy) {
+  var v = BD.view, r = BD.stage.getBoundingClientRect();
+  if (sx === undefined) { sx = r.width / 2; sy = r.height / 2; }
+  var k = Math.max(0.08, Math.min(5, v.k * f));
+  v.x = sx - (sx - v.x) * (k / v.k); v.y = sy - (sy - v.y) * (k / v.k); v.k = k; bdApply();
+}
+function bdFit() {
+  if (!BD.id) return;
+  var r = BD.stage.getBoundingClientRect(), v = BD.view;
+  if (!BD.items.length) { v.k = 1; v.x = r.width / 2; v.y = r.height / 2; bdApply(); return; }
+  var a = Infinity, b = Infinity, c = -Infinity, d = -Infinity;
+  BD.items.forEach(function (p) { var h = (BD.nodes[p.path] && BD.nodes[p.path].offsetHeight) || p.w; a = Math.min(a, p.x); b = Math.min(b, p.y); c = Math.max(c, p.x + p.w); d = Math.max(d, p.y + h); });
+  v.k = Math.max(0.08, Math.min(1, (r.width - 48) / (c - a), (r.height - 96) / (d - b)));
+  v.x = (r.width - (c - a) * v.k) / 2 - a * v.k; v.y = (r.height - (d - b) * v.k) / 2 - b * v.k; bdApply();
+}
+// keeps everything in view while pictures load, until you move the canvas yourself
+function bdFitSoon() { if (BD.id && !BD.touched) requestAnimationFrame(function () { if (BD.id && !BD.touched) bdFit(); }); }
+function bdChrome() {
+  if (!BD.id) return;
+  var signed = mbSigned(), empty = BD.el.querySelector('.bempty'), bar = BD.el.querySelector('.bbar');
+  var wrong = !signed && window.STORE && STORE.status().signedIn;
+  empty.innerHTML = !signed ? '<p>' + (wrong ? 'This email is not on the list of people who can see the pictures.' : 'Sign in to see and add pictures.') + '</p><button class="btn" data-bd="signin">' + (wrong ? 'Go back' : 'Go to sign in') + '</button>'
+    : !BD.loaded ? (BD.loading ? '<p>Loading pictures…</p>' : '<button class="btn" data-bd="retry">Try again</button>')
+    : !BD.items.length && !BD.busy ? '<p>Drop pictures here, paste one, or press + Add pictures.</p>' : '';
+  BD.el.querySelector('[data-bd="add"]').disabled = !signed || !BD.loaded || !!BD.busy;
+  bar.innerHTML = BD.sel ? '<button class="btn" data-bd="view">View</button><button class="btn" data-bd="front">Bring to front</button><button class="btn" data-bd="backward">Send to back</button><button class="btn" data-bd="del">' + (BD.armed ? 'Tap again to delete for good' : 'Delete') + '</button>' : '';
+  BD.el.querySelector('.bnote').textContent = BD.busy || BD.msg || '';
+}
+function bdSelect(path) {
+  if (BD.sel === path) return;
+  BD.sel = path; BD.armed = false;
+  BD.items.forEach(bdPlace); bdChrome();
+}
+function bdLayer(front) {
+  var p = bdFind(BD.sel); if (!p) return;
+  var zs = BD.items.map(function (x) { return x.z; });
+  p.z = front ? Math.max.apply(null, zs) + 1 : Math.min.apply(null, zs) - 1;
+  bdPlace(p); bdSave(p);
+}
+function bdDelete() {
+  var p = bdFind(BD.sel); if (!p) return;
+  if (!BD.armed) { BD.armed = true; bdChrome(); return; }
+  var run = BD.run; BD.armed = false; BD.msg = '';
+  STORE.files.remove([p.path]).then(function () {
+    BD.gone[p.path] = 1;
+    if (DB && bdSaved(p.path)) del('items', bdLayoutId(p.path));
+    if (run !== BD.run) return;
+    BD.items = BD.items.filter(function (x) { return x !== p; }); BD.sel = null; bdSync();
+  }, function (e) { if (run !== BD.run) return; BD.msg = 'Not deleted: ' + mbWords(e); bdChrome(); });
 }
 // big phone photos are shrunk before upload (this also drops the location data inside them)
 function mbShrink(file) {
   return new Promise(function (ok, no) {
     var img = new Image(), src = URL.createObjectURL(file);
-    var bad = function () { URL.revokeObjectURL(src); no(new Error('Could not read ' + file.name + '. Use a JPG or PNG.')); };
+    var bad = function () { URL.revokeObjectURL(src); no(new Error('Could not read ' + (file.name || 'that picture') + '. Use a JPG or PNG.')); };
     img.onload = function () {
       var k = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight)), cv = document.createElement('canvas');
       cv.width = Math.max(1, Math.round(img.naturalWidth * k)); cv.height = Math.max(1, Math.round(img.naturalHeight * k));
       var g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(img, 0, 0, cv.width, cv.height);
-      cv.toBlob(function (b) { if (!b) return bad(); URL.revokeObjectURL(src); ok(b); }, 'image/jpeg', 0.85);
+      cv.toBlob(function (b) { if (!b) return bad(); URL.revokeObjectURL(src); ok({ blob: b, wide: cv.width >= cv.height, ratio: cv.height / cv.width }); }, 'image/jpeg', 0.85);
     };
     img.onerror = bad;
     img.src = src;
   });
 }
-function mbUpload(id, list) {
-  var i = IDEA_BY[id]; if (!i || !list.length || MB.busy[id]) return;
-  var folder = mbFolders(i)[0], problems = [];
-  MB.err[id] = '';
+// point = where on the screen the pictures were dropped; otherwise the middle of what you can see
+function bdUpload(list, point) {
+  if (!BD.id || !list.length || BD.busy || !BD.loaded || !mbSigned()) return;
+  var id = BD.id, run = BD.run, folder = mbFolders(IDEA_BY[id])[0], problems = [], r = BD.stage.getBoundingClientRect();
+  var sx = point ? point.x - r.left : r.width / 2, sy = point ? point.y - r.top : r.height / 2;
+  var cx = (sx - BD.view.x) / BD.view.k, cy = (sy - BD.view.y) / BD.view.k;
+  var wasEmpty = !BD.items.length; BD.touched = !wasEmpty; BD.msg = '';
+  // several at once are laid out side by side so none of them hides another
+  var tall = []; for (var c = 0; c < Math.min(list.length, 3); c++) tall.push(0);
   list.reduce(function (chain, file, n) {
     return chain.then(function () {
-      MB.busy[id] = 'Uploading ' + (n + 1) + ' of ' + list.length + '…'; mbPaint(id);
-      return mbShrink(file).then(function (blob) {
-        return STORE.files.upload(folder + '/' + Date.now() + '-' + Math.random().toString(36).slice(2, 7) + '.jpg', blob);
+      BD.busy = 'Uploading ' + (n + 1) + ' of ' + list.length + '…'; if (run === BD.run) bdChrome();
+      return mbShrink(file).then(function (s) {
+        var path = folder + '/' + Date.now() + '-' + Math.random().toString(36).slice(2, 7) + '.jpg';
+        return STORE.files.upload(path, s.blob).then(function () { return STORE.files.sign([path]); }).then(function (links) {
+          var w = s.wide ? 360 : 280;
+          var top = BD.items.reduce(function (m, x) { return Math.max(m, x.z); }, 0);
+          var col = tall.indexOf(Math.min.apply(null, tall)), h = w * s.ratio;
+          var p = { path: path, url: links[path], signed: Date.now(), added: Date.now(), w: w, x: cx + (col - tall.length / 2) * 384 + (384 - w) / 2, y: cy - Math.min(h, 440) / 2 + tall[col], z: top + 1 };
+          tall[col] += h + 24;
+          bdSave(p);
+          if (run === BD.run) { BD.items.push(p); bdSync(); }
+        });
       }).catch(function (e) { problems.push(mbWords(e)); });
     });
   }, Promise.resolve()).then(function () {
-    MB.busy[id] = '';
-    MB.err[id] = problems.length ? problems.length + ' of ' + list.length + ' did not upload. ' + problems[0] : '';
-    mbPaint(id); mbLoad(id, true);
+    if (run !== BD.run) return;
+    BD.busy = ''; BD.msg = problems.length ? problems.length + ' of ' + list.length + ' did not upload. ' + problems[0] : ''; bdChrome();
   });
 }
-// one file chooser that lives outside the panel, so a redraw cannot drop what you picked
-function mbPick(id) {
+// one file chooser that lives outside the page, so a redraw cannot drop what you picked
+function mbPick() {
   var inp = document.getElementById('mbfile');
   if (!inp) {
     inp = document.createElement('input'); inp.type = 'file'; inp.id = 'mbfile'; inp.accept = 'image/*'; inp.multiple = true; inp.hidden = true;
-    inp.addEventListener('change', function () { var got = [].slice.call(inp.files); inp.value = ''; mbUpload(MB.target, got); });
+    inp.addEventListener('change', function () { var got = [].slice.call(inp.files); inp.value = ''; bdUpload(got); });
     document.body.appendChild(inp);
   }
-  MB.target = id; inp.click();
+  inp.click();
+}
+function bdEvents(st) {
+  var at = function (e) { var r = st.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+  var tap = { path: null, at: 0 };
+  // two quick taps (or a double-click) on a picture open it full size
+  var finish = function (cancelled) {
+    var a = BD.act; BD.act = null; st.classList.remove('grabbing');
+    if (!a || !a.item) { tap.path = null; return; }
+    if (a.moved) { tap.path = null; bdSave(a.item); return; }
+    if (cancelled || a.mode !== 'move') return;
+    var now = Date.now();
+    if (tap.path === a.item.path && now - tap.at < 400) { var path = tap.path; tap.path = null; setTimeout(function () { bdView(path); }, 0); }
+    else { tap.path = a.item.path; tap.at = now; }
+  };
+  // a second finger means pinch: put the picture back where it was and zoom instead
+  var pinchStart = function () {
+    var a = BD.act;
+    if (a && a.item) { Object.assign(a.item, a.was); bdPlace(a.item); }
+    var ids = Object.keys(BD.pointers), p = BD.pointers[ids[0]], q = BD.pointers[ids[1]];
+    BD.act = { mode: 'pinch', d: Math.hypot(p.x - q.x, p.y - q.y) || 1, mx: (p.x + q.x) / 2, my: (p.y + q.y) / 2 };
+  };
+  st.addEventListener('pointerdown', function (e) {
+    if (e.button > 1 || e.target.closest('.bbar, .bempty')) return;
+    e.preventDefault(); st.focus({ preventScroll: true });
+    BD.pointers[e.pointerId] = at(e);
+    try { st.setPointerCapture(e.pointerId); } catch (err) { }
+    if (Object.keys(BD.pointers).length === 2) { pinchStart(); return; }
+    if (BD.act) return;
+    var node = e.target.closest('.bitem'), corner = e.target.getAttribute('data-corner'), s = at(e);
+    if (node && e.button === 0) {
+      var p = bdFind(node.getAttribute('data-path'));
+      bdSelect(p.path);
+      BD.act = { mode: corner ? 'size' : 'move', corner: corner, item: p, sx: s.x, sy: s.y, was: { x: p.x, y: p.y, w: p.w }, ratio: node.offsetHeight / node.offsetWidth || 1, moved: false };
+    } else {
+      bdSelect(null);
+      BD.act = { mode: 'pan', sx: s.x, sy: s.y, vx: BD.view.x, vy: BD.view.y };
+      st.classList.add('grabbing');
+    }
+  });
+  st.addEventListener('pointermove', function (e) {
+    if (!BD.pointers[e.pointerId]) return;
+    var s = BD.pointers[e.pointerId] = at(e), a = BD.act; if (!a) return;
+    if (a.mode === 'pinch') {
+      var ids = Object.keys(BD.pointers); if (ids.length < 2) return;
+      var p = BD.pointers[ids[0]], q = BD.pointers[ids[1]], d = Math.hypot(p.x - q.x, p.y - q.y) || 1, mx = (p.x + q.x) / 2, my = (p.y + q.y) / 2;
+      BD.touched = true; BD.view.x += mx - a.mx; BD.view.y += my - a.my; bdZoom(d / a.d, mx, my); a.d = d; a.mx = mx; a.my = my;
+      return;
+    }
+    var dx = s.x - a.sx, dy = s.y - a.sy;
+    if (a.mode === 'pan') { BD.touched = true; BD.view.x = a.vx + dx; BD.view.y = a.vy + dy; bdApply(); return; }
+    if (!a.moved && Math.hypot(dx, dy) < 4) return;
+    a.moved = true; BD.touched = true;
+    dx /= BD.view.k; dy /= BD.view.k;
+    var it = a.item, w0 = a.was;
+    if (a.mode === 'move') { it.x = w0.x + dx; it.y = w0.y + dy; }
+    else {
+      var west = a.corner.charAt(1) === 'w', north = a.corner.charAt(0) === 'n';
+      var gx = (west ? -dx : dx), gy = (north ? -dy : dy) / a.ratio;
+      var w = Math.max(60, Math.min(4000, w0.w + (Math.abs(gx) > Math.abs(gy) ? gx : gy)));
+      it.w = w; it.x = west ? w0.x + w0.w - w : w0.x; it.y = north ? w0.y + (w0.w - w) * a.ratio : w0.y;
+    }
+    bdPlace(it);
+  });
+  var up = function (e) {
+    if (!BD.pointers[e.pointerId]) return;
+    delete BD.pointers[e.pointerId];
+    if (BD.act && BD.act.mode === 'pinch') { if (!Object.keys(BD.pointers).length) BD.act = null; return; }
+    finish(e.type === 'pointercancel');
+  };
+  st.addEventListener('pointerup', up); st.addEventListener('pointercancel', up);
+  // two-finger scroll moves around; pinching on a trackpad (or Command + scroll) zooms
+  st.addEventListener('wheel', function (e) {
+    e.preventDefault(); BD.touched = true;
+    var step = e.deltaMode === 1 ? 16 : 1, s = at(e);
+    if (e.ctrlKey || e.metaKey) bdZoom(Math.exp(-Math.max(-60, Math.min(60, e.deltaY * step)) * 0.01), s.x, s.y);
+    else { BD.view.x -= e.deltaX * step; BD.view.y -= e.deltaY * step; bdApply(); }
+  }, { passive: false });
+  var lastScale = 1;
+  st.addEventListener('gesturestart', function (e) { e.preventDefault(); lastScale = 1; });
+  st.addEventListener('gesturechange', function (e) { e.preventDefault(); if (Object.keys(BD.pointers).length) return; var s = at(e); BD.touched = true; bdZoom(e.scale / lastScale, s.x, s.y); lastScale = e.scale; });
+  st.addEventListener('dragover', function (e) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+  st.addEventListener('drop', function (e) {
+    e.preventDefault();
+    var got = [].filter.call(e.dataTransfer.files || [], function (f) { return /^image\//.test(f.type); });
+    if (got.length) bdUpload(got, { x: e.clientX, y: e.clientY });
+    else { BD.msg = 'Drop picture files from your computer. Pictures dragged from a website do not work.'; bdChrome(); }
+  });
+}
+document.addEventListener('paste', function (e) {
+  if (!BD.id) return;
+  var got = [].filter.call((e.clipboardData && e.clipboardData.files) || [], function (f) { return /^image\//.test(f.type); });
+  if (got.length) { e.preventDefault(); bdUpload(got); }
+});
+// full-size view of one picture; arrows step through the board
+function bdView(path) {
+  var n = BD.items.map(function (p) { return p.path; }).indexOf(path);
+  if (n >= 0) { MB.view = { at: n }; mbShow(); }
 }
 function mbShow() {
   var el = document.getElementById('mblight'); if (!el) { el = document.createElement('div'); el.id = 'mblight'; document.body.appendChild(el); }
-  var v = MB.view, items = v && MB.cache[v.id] ? MB.cache[v.id].items : [];
+  var v = MB.view, items = BD.items;
   if (!v || !items.length) { MB.view = null; el.className = ''; el.innerHTML = ''; return; }
   v.at = (v.at + items.length) % items.length;
   el.className = 'on';
   el.innerHTML = '<div class="mbveil" data-mbclose="1"></div><img src="' + esc(items[v.at].url) + '" alt="Moodboard picture ' + (v.at + 1) + '">' +
     '<div class="mbbar">' + (items.length > 1 ? '<button class="btn" data-mbstep="-1" aria-label="Previous picture">←</button><span>' + (v.at + 1) + ' of ' + items.length + '</span><button class="btn" data-mbstep="1" aria-label="Next picture">→</button>' : '') +
-    '<button class="btn" data-mbremove="1">' + (v.armed ? 'Tap again to delete for good' : 'Remove') + '</button><button class="btn" data-mbclose="1">Close</button></div>';
+    '<button class="btn" data-mbclose="1">Close</button></div>';
 }
-function mbRemove() {
-  var v = MB.view; if (!v) return;
-  if (!v.armed) { v.armed = true; mbShow(); return; }
-  var id = v.id, p = MB.cache[id].items[v.at];
-  v.armed = false;
-  STORE.files.remove([p.path]).then(function () {
-    MB.cache[id].items = MB.cache[id].items.filter(function (x) { return x.path !== p.path; });
-    MB.err[id] = ''; mbShow(); mbPaint(id);
-  }, function (e) { MB.err[id] = 'Not removed: ' + mbWords(e); MB.view = null; mbShow(); mbPaint(id); });
+function bdButton(what) {
+  if (what === 'back') closeBoard();
+  else if (what === 'add') mbPick();
+  else if (what === 'in' || what === 'out') { BD.touched = true; bdZoom(what === 'in' ? 1.25 : 0.8); }
+  else if (what === 'fit') bdFit();
+  else if (what === 'view') bdView(BD.sel);
+  else if (what === 'front' || what === 'backward') bdLayer(what === 'front');
+  else if (what === 'del') bdDelete();
+  else if (what === 'retry') bdLoad();
+  else if (what === 'signin') { BD.from = null; location.hash = 'content'; setTimeout(function () { AUTH.open = true; AUTH.msg = ''; stamp(); var m = document.getElementById('authmail'); if (m) { m.scrollIntoView({ block: 'center' }); m.focus(); } }, 60); }
+}
+function bdKey(e) {
+  if (e.key === 'Escape') { if (BD.sel) bdSelect(null); else closeBoard(); return; }
+  var p = bdFind(BD.sel); if (!p || (e.target.closest && e.target.closest('button'))) return;
+  if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); bdDelete(); return; }
+  var step = (e.shiftKey ? 40 : 8), move = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
+  if (move) { e.preventDefault(); BD.touched = true; p.x += move[0]; p.y += move[1]; bdPlace(p); bdSave(p); }
 }
 // signing in or out changes what the board may show
 function mbAuth() {
-  var now = mbSigned(); if (now === MB.who) return;
-  MB.who = now; MB.cache = {}; MB.err = {}; MB.view = null; mbShow();
-  if (CT.open) { mbPaint(CT.open); mbLoad(CT.open); }
+  if (!BD.id) return;
+  if (!mbSigned()) { BD.run++; BD.items = []; BD.loaded = false; BD.loading = false; BD.sel = null; MB.view = null; mbShow(); bdSync(); }
+  else if (!BD.loaded && !BD.loading && !BD.msg) bdLoad();
 }
+window.addEventListener('hashchange', boardRoute);
+window.addEventListener('resize', function () { bdFitSoon(); });
+// pick up pictures Conor added, and renew the private picture links before they expire
+window.addEventListener('focus', function () {
+  if (!BD.id || !BD.loaded || BD.busy || BD.act || Date.now() - BD.loadedAt < 30000) return;
+  if (BD.items.length) BD.touched = true; // do not move the view you are working in
+  bdLoad();
+});
 function videoCode(u) { var m = /instagram\.com\/(?:[\w.]+\/)?(?:p|reel|tv)\/([\w-]+)/.exec(u || ''); return m ? m[1] : ''; }
 function isFav(code) { return (STATE.favorites || []).some(function (x) { return x.id === code; }); }
 function favToggle(code, ideaId) {
@@ -2050,9 +2325,9 @@ function galleryTick(ts) {
   var dt = Math.min(0.05, GL.last ? (ts - GL.last) / 1000 : 0); GL.last = ts;
   if (!GL.down) {
     if (Math.abs(GL.vel) > 8) { GL.offset += GL.vel * dt; GL.vel *= Math.pow(0.05, dt); }
-    else { GL.vel = 0; if (!GL.paused && !CT.open) GL.offset += GL_SPEED * dt; }
+    else { GL.vel = 0; if (!GL.paused && !CT.open && !BD.id) GL.offset += GL_SPEED * dt; }
   }
-  galleryDraw();
+  if (!BD.id) galleryDraw();
   GL.raf = requestAnimationFrame(galleryTick);
 }
 function galleryInit() {
@@ -2202,23 +2477,21 @@ function drawerRender() {
   el.className = 'on';
   var code = videoCode(i.refs[Math.min(CT.ref, i.refs.length - 1)]);
   var fav = code ? '<div class="btnrow"><button class="btn favbtn" data-fav="' + code + '" data-favidea="' + i.id + '" aria-pressed="' + isFav(code) + '">' + (isFav(code) ? '♥ Favorited' : '♡ Favorite this video') + '</button></div>' : '';
-  var main = plan + fav + '<div id="mboard" data-mbfor="' + i.id + '">' + mbInner(i) + '</div>' + previewHtml(i) + (other ? '<p class="note">' + other + '</p>' : '') +
+  var main = plan + fav + '<div class="btnrow"><button class="btn" data-mbboard="' + i.id + '">Open moodboard →</button></div>' + previewHtml(i) + (other ? '<p class="note">' + other + '</p>' : '') +
     '<p class="note">Vault note: ' + esc(i.path) + '</p>';
   el.innerHTML = '<div class="veil" data-cclose="1"></div><div class="sheet wide"><button class="btn x" data-cclose="1" aria-label="Close">×</button><h3>' + esc(i.name) + '</h3>' +
     '<div class="tags">' + tags.map(function (t) { return '<span>' + esc(t) + '</span>'; }).join('') + (i.tagged ? '' : '<span>needs tagging</span>') + '</div>' +
     '<div class="tgrid">' + tagPanel(i) + '<div style="min-width:0">' + main + '</div></div></div>';
-  igProcess(); mbLoad(i.id);
+  igProcess();
 }
 document.addEventListener('click', function (e) {
   var t = e.target, b;
   if ((b = t.closest('[data-gth]'))) { var gth = b.getAttribute('data-gth'), gi = CT.gth.indexOf(gth); if (!gth) CT.gth = []; else if (gi >= 0) CT.gth.splice(gi, 1); else CT.gth.push(gth); GL.offset = 0; var sx = (document.querySelector('.gfilters') || {}).scrollLeft || 0; show(); var gf = document.querySelector('.gfilters'); if (gf) gf.scrollLeft = sx; return; }
   if ((b = t.closest('[data-gpause]'))) { GL.paused = !GL.paused; b.textContent = GL.paused ? 'Play' : 'Pause'; b.setAttribute('aria-pressed', GL.paused); return; }
-  if ((b = t.closest('[data-mbadd]'))) { mbPick(b.getAttribute('data-mbadd')); return; }
-  if ((b = t.closest('[data-mbopen]'))) { MB.view = { id: CT.open, at: +b.getAttribute('data-mbopen'), armed: false }; mbShow(); return; }
+  if ((b = t.closest('[data-bd]'))) { if (!b.disabled) bdButton(b.getAttribute('data-bd')); return; }
   if ((b = t.closest('[data-mbclose]'))) { MB.view = null; mbShow(); return; }
-  if ((b = t.closest('[data-mbstep]'))) { if (MB.view) { MB.view.at += +b.getAttribute('data-mbstep'); MB.view.armed = false; mbShow(); } return; }
-  if ((b = t.closest('[data-mbremove]'))) { mbRemove(); return; }
-  if ((b = t.closest('[data-mbboard]'))) { CT.open = b.getAttribute('data-mbboard'); CT.ref = 0; drawerRender(); var mbe = document.getElementById('mboard'); if (mbe) mbe.scrollIntoView({ block: 'center' }); return; }
+  if ((b = t.closest('[data-mbstep]'))) { if (MB.view) { MB.view.at += +b.getAttribute('data-mbstep'); mbShow(); } return; }
+  if ((b = t.closest('[data-mbboard]'))) { openBoard(b.getAttribute('data-mbboard')); return; }
   if ((b = t.closest('[data-fav]'))) { favToggle(b.getAttribute('data-fav'), b.getAttribute('data-favidea')); return; }
   if ((b = t.closest('[data-tadd]'))) { var ai = IDEA_BY[CT.open], ni2 = document.getElementById('tnewmicro'); if (ai && ni2 && ni2.value.trim()) { var added = ai.micro.concat([ni2.value.trim()]); ni2.value = ''; ni2.blur(); tagSave(ai, 'micro', added); } return; }
   if ((b = t.closest('[data-authopen]'))) { AUTH.open = true; AUTH.msg = ''; stamp(); var am = document.getElementById('authmail'); if (am) am.focus(); return; }
@@ -2265,9 +2538,10 @@ document.addEventListener('click', function (e) {
 document.addEventListener('keydown', function (e) {
   if (MB.view) {
     if (e.key === 'Escape') { MB.view = null; mbShow(); }
-    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { MB.view.at += e.key === 'ArrowLeft' ? -1 : 1; MB.view.armed = false; mbShow(); }
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { MB.view.at += e.key === 'ArrowLeft' ? -1 : 1; mbShow(); }
     return;
   }
+  if (BD.id) { bdKey(e); return; }
   if (e.key === 'Enter' && e.target.id === 'tnewmicro') { document.querySelector('[data-tadd]').click(); return; }
   if (e.key === 'Enter' && e.target.id === 'authmail') { document.querySelector('[data-authsend]').click(); return; }
   if (e.key === 'Escape' && CT.open) { CT.open = null; drawerRender(); return; }
@@ -2345,6 +2619,7 @@ function show() {
 }
 var PENDING_RENDER = false;
 function render() {
+  if (BD.id) { bdSync(); return; }
   var a = document.activeElement;
   if (a && a.closest && a.closest('#panel') && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) { PENDING = true; return; }
   PENDING = false; show();
@@ -2367,6 +2642,7 @@ function boot() {
   });
 }
 boot();
+boardRoute();
 
 </script>
 </body></html>
