@@ -226,7 +226,7 @@ form.inline input { flex: 1 1 140px; }
 #drawer h3 { margin: 0 28px 4px 0; font-size: 22px; letter-spacing: -.02em; line-height: 1.15; }
 #drawer .sheet.wide { width: min(960px, 100%); }
 .tgrid { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 22px; margin-top: 14px; align-items: start; }
-@media (max-width: 780px) { .tgrid { grid-template-columns: 1fr; } }
+@media (max-width: 780px) { .tgrid { grid-template-columns: 1fr; } .tgrid > div:last-child { order: -1; } }
 .tpanel { display: flex; flex-direction: column; gap: 10px; }
 .tpanel .lab { margin: 0 0 6px; }
 .tpills { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -254,6 +254,9 @@ body.gal .gfilters{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding
 .gwait{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:14px;font-size:13px;color:var(--fg)}.gcard.seen .gwait{visibility:hidden}.gwait small{display:block;margin-top:8px;font-size:11px;opacity:.65}
 .ghit{position:absolute;inset:0;width:100%;height:100%;border:0;padding:0;margin:0;background:transparent;cursor:inherit;display:flex;align-items:flex-end}
 .ghit span{display:block;width:100%;padding:8px 10px;background:#000;color:#fff;font-size:12px;line-height:1.3;text-align:left;opacity:0;transition:opacity .2s}.ghit:hover span,.ghit:focus-visible span{opacity:1}
+.gheart{position:absolute;top:8px;right:8px;z-index:2;width:34px;height:34px;border-radius:50%;border:0;padding:0;background:rgba(0,0,0,.55);color:#fff;font-size:18px;line-height:34px;text-align:center;cursor:pointer}.gheart[aria-pressed=true]{background:#fff;color:#c4122f}
+.favbtn[aria-pressed=true]{font-weight:700}.tnew{display:flex;gap:6px;width:100%;margin-top:8px}.tnew input{flex:1;min-width:0}
+#stamp .btn{margin-left:8px;font-style:normal}#stamp .authrow{display:inline-flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;margin-left:8px}
 .igfail { margin: 12px 0 6px; padding: 14px; border: 1px solid var(--line); background: var(--soft); }
 .igfail p { margin: 0 0 10px; font-size: 13px; }
 .cover .nocover { display: flex; align-items: center; justify-content: center; min-height: 120px; padding: 16px; text-decoration: underline; }
@@ -1082,30 +1085,12 @@ body .top .stamp { align-self: flex-end; }
 </div>
 
 <script>window.__LOCAL = true;</script>
-<script>// A small stand-in for the shared database: everything is saved in THIS browser only (localStorage).
-(function () {
-  var KEY = 'staatus-content-local-db', data = {}, subs = {}, n = Date.now();
-  try { data = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) {}
-  if (!data.items) data.items = JSON.parse(JSON.stringify(window.__SEED_ITEMS || []));
-  function save() { try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) {} }
-  function rows(c) { return data[c] = data[c] || []; }
-  function emit(c) { save(); (subs[c] || []).forEach(function (f) { f({ docs: rows(c).map(function (d) { return { id: d.id, data: function () { return JSON.parse(JSON.stringify(d)); } }; }) }); }); }
-  function find(c, id) { return rows(c).filter(function (x) { return x.id === id; })[0]; }
-  var db = { collection: function (c) { return {
-    onSnapshot: function (f) { (subs[c] = subs[c] || []).push(f); setTimeout(function () { emit(c); }, 10); },
-    add: function (o) { o = JSON.parse(JSON.stringify(o)); o.id = 'l' + (n++); rows(c).push(o); emit(c); return Promise.resolve(); },
-    doc: function (id) { return {
-      set: function (o) { o = JSON.parse(JSON.stringify(o)); o.id = id; var d = find(c, id); if (d) { Object.keys(d).forEach(function (k) { delete d[k]; }); Object.assign(d, o); } else rows(c).push(o); emit(c); return Promise.resolve(); },
-      update: function (o) { var d = find(c, id); if (d) Object.assign(d, JSON.parse(JSON.stringify(o))); else { o = JSON.parse(JSON.stringify(o)); o.id = id; rows(c).push(o); } emit(c); return Promise.resolve(); },
-      delete: function () { data[c] = rows(c).filter(function (x) { return x.id !== id; }); emit(c); return Promise.resolve(); } }; } }; } };
-  window.claude = { use: function (k) { return k === 'db' ? Promise.resolve(db) : Promise.reject(new Error('not available')); } };
-})();
-if (!location.hash) location.hash = 'content';
-</script>
 <script src="data/ideas-teo.js"></script>
 <script src="data/ideas-conor.js"></script>
 <script src="data/posts.js"></script>
 <script src="data/seed.js"></script>
+<script src="config.js"></script>
+<script src="store.js"></script>
 <script>
 var LINKS = { analytics: "", instagram: "https://www.instagram.com/staatusstudios" };
 var THUMBS = {};
@@ -1140,7 +1125,18 @@ function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').repla
 function safeUrl(u) { return /^https?:\/\//i.test(u || '') ? u : ''; }
 function nowIso() { return new Date().toISOString(); }
 function loaded() { for (var k in STATE) { if (!STATE[k]) return false; } return true; }
-function stamp() { var el = document.getElementById('stamp'); if (el) el.textContent = CONN; }
+var AUTH = { open: false, msg: '' };
+function stamp() {
+  var el = document.getElementById('stamp'); if (!el) return;
+  if (el.contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return;
+  var st = window.STORE ? STORE.status() : { text: CONN };
+  var extra = '';
+  if (st.canSignIn) extra = AUTH.open
+    ? ' <span class="authrow"><input type="email" id="authmail" placeholder="Your email" autocomplete="email"><button class="btn" data-authsend="1">Email me a link</button></span>'
+    : ' <button class="btn" data-authopen="1">Sign in</button>';
+  else if (st.signedIn) extra = ' <button class="btn" data-authout="1">Sign out</button>';
+  el.innerHTML = esc(/^Save failed/.test(CONN) ? CONN : AUTH.msg || st.text) + extra;
+}
 function fail(e) { CONN = 'Save failed (' + ((e && e.code) || 'error') + '). Refresh and try again.'; stamp(); }
 function dbWrite(fn) { if (!DB) return; try { fn().catch(fail); } catch (e) { fail(e); } }
 function hqStr(v) { return v == null ? '' : String(v).trim(); }
@@ -1380,6 +1376,40 @@ var CT = {
   fl: { theme: [], loc: '', coll: '', q: '' },
   tag: 'Untagged', tg: { micro: false, loc: false, notes: false }, tmsg: ''
 };
+// ---------- favorites and tags ----------
+var FIELDS_T = ['themes', 'micro', 'location', 'text'];
+var IDEA_ORIG = {};
+IDEAS.forEach(function (i) { IDEA_ORIG[i.id] = { themes: i.themes.slice(), micro: i.micro.slice(), location: i.location.slice(), text: i.text || '' }; });
+function same(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+// a tag edit made here wins only while the note still says what it said when the edit was made
+function applyTagEdits() {
+  var by = {}; (STATE.tags || []).forEach(function (d) { by[d.id] = d; });
+  IDEAS.forEach(function (i) {
+    var o = IDEA_ORIG[i.id], d = by[i.id];
+    FIELDS_T.forEach(function (f) {
+      var e = d && d.fields && d.fields[f], v = e && same(o[f], e.base) ? e.v : o[f];
+      i[f] = Array.isArray(v) ? v.slice() : v;
+    });
+    i.tagged = i.themes.length > 0;
+  });
+}
+function tagStore(i, field, value) {
+  if (!DB) return;
+  var f = field === 'notes' ? 'text' : field;
+  var d = (STATE.tags || []).filter(function (x) { return x.id === i.id; })[0];
+  var fields = d && d.fields ? JSON.parse(JSON.stringify(d.fields)) : {};
+  fields[f] = { v: value, base: IDEA_ORIG[i.id][f], at: nowIso() };
+  CT.tmsg = 'Saved.';
+  dbWrite(function () { return DB.collection('tags').doc(i.id).set({ ideaId: i.id, path: i.path, name: i.name, fields: fields }); });
+}
+function videoCode(u) { var m = /instagram\.com\/(?:[\w.]+\/)?(?:p|reel|tv)\/([\w-]+)/.exec(u || ''); return m ? m[1] : ''; }
+function isFav(code) { return (STATE.favorites || []).some(function (x) { return x.id === code; }); }
+function favToggle(code, ideaId) {
+  if (!DB || !code) return;
+  var i = IDEA_BY[ideaId];
+  if (isFav(code)) dbWrite(function () { return DB.collection('favorites').doc(code).delete(); });
+  else dbWrite(function () { return DB.collection('favorites').doc(code).set({ code: code, ideaId: ideaId, name: i ? i.name : '', createdAt: nowIso() }); });
+}
 var POST_DAYS = [2, 4, 6];
 var IDEA_BY = {};
 (typeof IDEAS !== 'undefined' ? IDEAS : []).forEach(function (i) { IDEA_BY[i.id] = i; });
@@ -1769,7 +1799,7 @@ function contentPanel() {
 }
 function contentAfter() { graphInit(); dayModalRender(); igProcess(); galleryInit(); }
 // ---------- Gallery: two endless rows of every saved video, drifting to the right ----------
-CT.gth = [];
+CT.gth = []; CT.gfav = false;
 var GL = { stage: null, nodes: {}, dead: {}, rows: [[], []], offset: 0, vel: 0, raf: 0, last: 0, paused: false, down: null, dragged: false, sig: '', w: 0, cw: 0, ch: 0, gap: 0 };
 try { GL.paused = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { }
 var GL_SPEED = 24, GL_ORDER = null;
@@ -1779,28 +1809,44 @@ function galleryAll() {
     i.refs.forEach(function (u) {
       var m = /^https:\/\/www\.instagram\.com\/(?:[\w.]+\/)?(p|reel|tv)\/([\w-]+)/.exec(u); if (!m) return;
       var c = by[m[2]];
-      if (!c) { c = by[m[2]] = { code: m[2], kind: m[1], id: i.id, ref: i.refs.indexOf(u), name: i.name, themes: [] }; list.push(c); }
-      i.themes.forEach(function (t) { if (c.themes.indexOf(t) < 0) c.themes.push(t); });
+      if (!c) { c = by[m[2]] = { code: m[2], kind: m[1], id: i.id, ids: [], ref: i.refs.indexOf(u), name: i.name, themes: [] }; list.push(c); }
+      c.ids.push(i.id);
     });
   });
+  list.forEach(function (c) { c.themes = galleryThemes(c); });
   // one shuffle per visit, so notes with similar names don't sit in a clump
   if (!GL_ORDER) { GL_ORDER = {}; list.forEach(function (c) { GL_ORDER[c.code] = Math.random(); }); }
   return list.sort(function (a, b) { return (GL_ORDER[a.code] || 0) - (GL_ORDER[b.code] || 0); });
 }
-function galleryList() {
-  return galleryAll().filter(function (c) { return !CT.gth.length || CT.gth.some(function (t) { return c.themes.indexOf(t) >= 0; }); });
+// a video saved in two notes carries both notes' themes
+function galleryThemes(c) { var out = []; c.ids.forEach(function (id) { (IDEA_BY[id] ? IDEA_BY[id].themes : []).forEach(function (t) { if (out.indexOf(t) < 0) out.push(t); }); }); return out; }
+function galleryHearts() {
+  [].forEach.call(document.querySelectorAll('.gheart'), function (h) { var f = isFav(h.getAttribute('data-fav')); h.setAttribute('aria-pressed', f); h.textContent = f ? '♥' : '♡'; });
+  var fp = document.querySelector('[data-gfav]'); if (fp) fp.textContent = '♥ Favorites · ' + galleryAll().filter(function (c) { return isFav(c.code); }).length;
 }
-function gallerySig() { return CT.gth.slice().sort().join('|') + '#' + galleryList().map(function (c) { return c.code; }).join(','); }
+// the theme counts above the running gallery, refreshed without reloading its videos
+function galleryCounts() {
+  var all = galleryAll();
+  [].forEach.call(document.querySelectorAll('[data-gth]'), function (p) { var t = p.getAttribute('data-gth'); if (t) p.textContent = t + ' · ' + all.filter(function (c) { return c.themes.indexOf(t) >= 0; }).length; });
+}
+function galleryList() {
+  return galleryAll().filter(function (c) {
+    c.themes = galleryThemes(c);
+    return (!CT.gfav || isFav(c.code)) && (!CT.gth.length || CT.gth.some(function (t) { return c.themes.indexOf(t) >= 0; }));
+  });
+}
+function gallerySig() { return CT.gth.slice().sort().join('|') + (CT.gfav ? '|fav' : '') + '#' + galleryList().map(function (c) { return c.code; }).join(','); }
 function galleryView() {
   var all = galleryAll(), list = galleryList(), noVideo = IDEAS.filter(function (i) { return !i.refs.length; }).length;
   var pill = function (val, label, on) { return '<button class="pill" data-gth="' + esc(val) + '" aria-pressed="' + on + '">' + esc(label) + '</button>'; };
-  var pills = pill('', 'All · ' + all.length, !CT.gth.length) + allThemes().map(function (t) {
+  var favN = all.filter(function (c) { return isFav(c.code); }).length;
+  var pills = pill('', 'All · ' + all.length, !CT.gth.length) + '<button class="pill" data-gfav="1" aria-pressed="' + CT.gfav + '">♥ Favorites · ' + favN + '</button>' + allThemes().map(function (t) {
     var n = all.filter(function (c) { return c.themes.indexOf(t) >= 0; }).length;
     return pill(t, t + ' · ' + n, CT.gth.indexOf(t) >= 0);
   }).join('');
   return '<div class="filters gfilters">' + pills + '</div>' +
-    '<div class="gbar"><span class="note">' + list.length + (list.length === 1 ? ' video' : ' videos') + ' · swipe or scroll sideways · tap one to open it</span><button class="btn" data-gpause="1" aria-pressed="' + GL.paused + '">' + (GL.paused ? 'Play' : 'Pause') + '</button></div>' +
-    (list.length ? '<div class="gstage" id="gstage" tabindex="0" aria-label="Gallery of content ideas. Use the left and right arrow keys to move."></div>' : '<p class="note">No videos have these themes yet.</p>') +
+    '<div class="gbar"><span class="note">' + list.length + (list.length === 1 ? ' video' : ' videos') + (list.length < 8 ? ' · tap one to open it</span>' : ' · swipe or scroll sideways · tap one to open it</span><button class="btn" data-gpause="1" aria-pressed="' + GL.paused + '">' + (GL.paused ? 'Play' : 'Pause') + '</button>') + '</div>' +
+    (list.length ? '<div class="gstage" id="gstage" tabindex="0" aria-label="Gallery of content ideas. Use the left and right arrow keys to move."></div>' : '<p class="note">' + (CT.gfav ? (favN ? 'None of your favorites have these themes.' : 'No favorites yet. Tap a heart on any video.') : 'No videos have these themes yet.') + '</p>') +
     (noVideo ? '<p class="note">' + noVideo + ' ideas have no video link, so they are not in the gallery.</p>' : '');
 }
 function gallerySize() {
@@ -1842,11 +1888,23 @@ function galleryCard(item) {
   var el = document.createElement('div');
   el.className = 'gcard';
   el.style.width = GL.cw + 'px'; el.style.height = GL.ch + 'px';
-  el.innerHTML = '<span class="gwait">' + esc(item.name) + '</span><button class="ghit" data-gopen="' + esc(item.id) + '" data-gref="' + item.ref + '" aria-label="Open ' + esc(item.name) + '"><span>' + esc(item.name) + '</span></button>';
+  el.innerHTML = '<span class="gwait">' + esc(item.name) + '</span><button class="ghit" data-gopen="' + esc(item.id) + '" data-gref="' + item.ref + '" aria-label="Open ' + esc(item.name) + '"><span>' + esc(item.name) + '</span></button>' +
+    '<button class="gheart" data-fav="' + item.code + '" data-favidea="' + esc(item.id) + '" aria-label="Favorite ' + esc(item.name) + '" aria-pressed="' + isFav(item.code) + '">' + (isFav(item.code) ? '♥' : '♡') + '</button>';
   return el;
 }
 function galleryDraw() {
   var st = GL.stage, pitch = GL.cw + GL.gap, seen = {}, fast = Math.abs(GL.vel) > 900;
+  if (GL.still) {
+    // only a handful: show each one once instead of repeating it across the screen
+    var across = Math.max(1, Math.floor((GL.w + GL.gap) / pitch));
+    GL.rows[0].forEach(function (item, at) {
+      var n = GL.nodes[at];
+      if (!n) { n = GL.nodes[at] = { el: galleryCard(item), item: item, frame: null }; st.appendChild(n.el); if (GL.dead[item.code]) galleryDead(n); else galleryFill(n); }
+      n.el.style.transform = 'translate3d(' + ((at % across) * pitch) + 'px,' + (Math.floor(at / across) * (GL.ch + GL.gap)) + 'px,0)';
+    });
+    st.style.height = (Math.ceil(GL.rows[0].length / across) * (GL.ch + GL.gap) - GL.gap) + 'px';
+    return;
+  }
   for (var r = 0; r < 2; r++) {
     var list = GL.rows[r], len = list.length; if (!len) continue;
     var base = GL.offset + (r ? -pitch / 2 : 0);
@@ -1877,10 +1935,11 @@ function galleryInit() {
   if (!st) { GL.stage = null; GL.nodes = {}; return; }
   var list = galleryList();
   GL.stage = st; GL.nodes = {}; GL.vel = 0; GL.down = null; GL.sig = gallerySig();
-  GL.rows = list.length > 1 ? [list.filter(function (c, n) { return n % 2 === 0; }), list.filter(function (c, n) { return n % 2 === 1; })] : [list, list];
+  GL.still = list.length < 8;
+  GL.rows = GL.still ? [list, []] : [list.filter(function (c, n) { return n % 2 === 0; }), list.filter(function (c, n) { return n % 2 === 1; })];
   gallerySize();
   st.addEventListener('pointerdown', function (e) {
-    if (e.button) return;
+    if (e.button || e.target.closest('.gheart')) return;
     GL.down = { id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, t: e.timeStamp, v: 0 }; GL.dragged = Math.abs(GL.vel) > 60; GL.vel = 0;
   });
   st.addEventListener('pointermove', function (e) {
@@ -1983,19 +2042,22 @@ function tagPanel(i) {
     return '<div><button class="tdrop" data-ttog="' + key + '" aria-expanded="' + !!CT.tg[key] + '"><span>' + title + '</span><span>' + (n ? n + ' · ' : '') + (CT.tg[key] ? '▴' : '▾') + '</span></button>' + (CT.tg[key] ? body : '') + '</div>';
   };
   var long = (i.text || '').length >= 420;
-  var notesBody = long ? '<p class="note">This note is long. Edit it in Obsidian.</p>' :
+  var notesBody = long ? '<p class="note" style="color:var(--fg)">' + esc(i.text) + '…</p><p class="note">This note is long. Edit it in Obsidian.</p>' :
     '<div class="tbody" style="display:block"><textarea id="tnotes" placeholder="Notes">' + esc(i.text || '') + '</textarea><div class="btnrow"><button class="btn" data-tnotes="1">Save note</button></div></div>';
   return '<div class="tpanel"><div><p class="lab">Themes</p><div class="tpills">' + themes + '</div></div>' +
-    drop('micro', 'Micro themes', i.micro.length, '<div class="tbody">' + microAll.map(function (m) { return chk('micro', m, m, i.micro.indexOf(m) >= 0); }).join('') + '</div>') +
+    drop('micro', 'Micro themes', i.micro.length, '<div class="tbody">' + microAll.map(function (m) { return chk('micro', m, m, i.micro.indexOf(m) >= 0); }).join('') +
+      '<span class="tnew"><input id="tnewmicro" placeholder="New tag" maxlength="40"><button class="btn" data-tadd="1">Add</button></span></div>') +
     drop('loc', 'Location', i.location.length, '<div class="tbody">' + locAll.map(function (m) { return chk('location', m, shortLoc(m), i.location.indexOf(m) >= 0); }).join('') + '</div>') +
     drop('notes', 'Notes', i.text ? '1' : '', notesBody) +
-    '<p class="note" id="tmsg">' + esc(CT.tmsg || 'Saves to the note as you tap.') + '</p></div>';
+    '<p class="note" id="tmsg">' + esc(CT.tmsg || (window.__TAGGER ? 'Saves to the note as you tap.' : 'Saves as you tap.')) + '</p></div>';
 }
 function tagSave(i, field, value) {
+  if (field !== 'notes') value = value.map(function (v) { return String(v).replace(/[\[\]"|\n\r]/g, '').trim(); }).filter(function (v, at, all) { return v && all.indexOf(v) === at; });
+  if (!window.__TAGGER) { tagStore(i, field, value); return; }
   CT.tmsg = 'Saving…'; var m = document.getElementById('tmsg'); if (m) m.textContent = CT.tmsg;
   return fetch('/api/tag', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: i.path, field: field, value: value }) })
     .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || 'Could not save.'); return j; }); })
-    .then(function (j) { i.themes = j.themes; i.micro = j.micro; i.location = j.location; i.text = j.text; i.tagged = j.tagged; CT.tmsg = 'Saved to the note.'; show(); drawerRender(); })
+    .then(function (j) { i.themes = j.themes; i.micro = j.micro; i.location = j.location; i.text = j.text; i.tagged = j.tagged; IDEA_ORIG[i.id] = { themes: j.themes.slice(), micro: j.micro.slice(), location: j.location.slice(), text: j.text }; CT.tmsg = 'Saved to the note.'; show(); drawerRender(); })
     .catch(function (e) { CT.tmsg = 'Not saved: ' + e.message; drawerRender(); });
 }
 function drawerRender() {
@@ -2010,19 +2072,32 @@ function drawerRender() {
     : '<div class="btnrow"><button class="btn" data-cplan="' + i.id + '"' + (DB ? '' : ' disabled') + '>Plan it (next open post day)</button></div>';
   var other = i.other.map(safeUrl).filter(Boolean).map(function (u) { return '<a href="' + esc(u) + '" target="_blank" rel="noopener">' + esc(u.replace(/^https?:\/\/(www\.)?/, '').slice(0, 48)) + ' ↗</a>'; }).join('<br>');
   el.className = 'on';
-  var T = window.__TAGGER;
-  var main = (i.text && !T ? '<p class="note" style="color:var(--fg)">' + esc(i.text) + '</p>' : '') + previewHtml(i) + (other ? '<p class="note">' + other + '</p>' : '') + plan +
-    '<p class="note">Vault note: ' + esc(i.path) + '</p>' +
-    (T ? '' : '<p class="note">Tagging is off on this page. On Teo\'s Mac, double-click Tag Ideas.command, then use <a href="http://localhost:4748/#content">localhost:4748</a>.</p>');
-  el.innerHTML = '<div class="veil" data-cclose="1"></div><div class="sheet' + (T ? ' wide' : '') + '"><button class="btn x" data-cclose="1" aria-label="Close">×</button><h3>' + esc(i.name) + '</h3>' +
+  var code = videoCode(i.refs[Math.min(CT.ref, i.refs.length - 1)]);
+  var fav = code ? '<div class="btnrow"><button class="btn favbtn" data-fav="' + code + '" data-favidea="' + i.id + '" aria-pressed="' + isFav(code) + '">' + (isFav(code) ? '♥ Favorited' : '♡ Favorite this video') + '</button></div>' : '';
+  var main = previewHtml(i) + fav + (other ? '<p class="note">' + other + '</p>' : '') + plan +
+    '<p class="note">Vault note: ' + esc(i.path) + '</p>';
+  el.innerHTML = '<div class="veil" data-cclose="1"></div><div class="sheet wide"><button class="btn x" data-cclose="1" aria-label="Close">×</button><h3>' + esc(i.name) + '</h3>' +
     '<div class="tags">' + tags.map(function (t) { return '<span>' + esc(t) + '</span>'; }).join('') + (i.tagged ? '' : '<span>needs tagging</span>') + '</div>' +
-    (T ? '<div class="tgrid">' + tagPanel(i) + '<div style="min-width:0">' + main + '</div></div>' : main) + '</div>';
+    '<div class="tgrid">' + tagPanel(i) + '<div style="min-width:0">' + main + '</div></div></div>';
   igProcess();
 }
 document.addEventListener('click', function (e) {
   var t = e.target, b;
   if ((b = t.closest('[data-gth]'))) { var gth = b.getAttribute('data-gth'), gi = CT.gth.indexOf(gth); if (!gth) CT.gth = []; else if (gi >= 0) CT.gth.splice(gi, 1); else CT.gth.push(gth); GL.offset = 0; var sx = (document.querySelector('.gfilters') || {}).scrollLeft || 0; show(); var gf = document.querySelector('.gfilters'); if (gf) gf.scrollLeft = sx; return; }
   if ((b = t.closest('[data-gpause]'))) { GL.paused = !GL.paused; b.textContent = GL.paused ? 'Play' : 'Pause'; b.setAttribute('aria-pressed', GL.paused); return; }
+  if ((b = t.closest('[data-fav]'))) { favToggle(b.getAttribute('data-fav'), b.getAttribute('data-favidea')); return; }
+  if ((b = t.closest('[data-tadd]'))) { var ai = IDEA_BY[CT.open], ni2 = document.getElementById('tnewmicro'); if (ai && ni2 && ni2.value.trim()) { var added = ai.micro.concat([ni2.value.trim()]); ni2.value = ''; ni2.blur(); tagSave(ai, 'micro', added); } return; }
+  if ((b = t.closest('[data-authopen]'))) { AUTH.open = true; AUTH.msg = ''; stamp(); var am = document.getElementById('authmail'); if (am) am.focus(); return; }
+  if ((b = t.closest('[data-authsend]'))) {
+    var mail = (document.getElementById('authmail') || {}).value || '';
+    if (!/^\S+@\S+\.\S+$/.test(mail.trim())) return;
+    if (document.activeElement) document.activeElement.blur();
+    AUTH.open = false; AUTH.msg = 'Sending the link…'; stamp();
+    STORE.signIn(mail.trim()).then(function () { AUTH.msg = 'Check your email and open the link in this browser.'; stamp(); }, function (err) { AUTH.msg = 'Could not send the link: ' + err.message; stamp(); });
+    return;
+  }
+  if ((b = t.closest('[data-authout]'))) { AUTH.msg = ''; STORE.signOut(); return; }
+  if ((b = t.closest('[data-gfav]'))) { CT.gfav = !CT.gfav; GL.offset = 0; show(); return; }
   if ((b = t.closest('[data-igretry]'))) { drawerRender(); dayModalRender(); igProcess(true); return; }
   if ((b = t.closest('[data-cview]'))) { CT.view = b.getAttribute('data-cview'); show(); return; }
   if ((b = t.closest('[data-ctag]'))) { CT.tag = b.getAttribute('data-ctag'); show(); return; }
@@ -2038,10 +2113,10 @@ document.addEventListener('click', function (e) {
   if ((b = t.closest('[data-ttog]'))) { var tk = b.getAttribute('data-ttog'); CT.tg[tk] = !CT.tg[tk]; drawerRender(); return; }
   if ((b = t.closest('[data-ttag]'))) {
     var ti = IDEA_BY[CT.open], tf = b.getAttribute('data-ttag'), tv = b.getAttribute('data-tval');
-    if (ti && window.__TAGGER) { var cur = (tf === 'themes' ? ti.themes : tf === 'micro' ? ti.micro : ti.location).slice(), at2 = cur.indexOf(tv); if (at2 >= 0) cur.splice(at2, 1); else cur.push(tv); tagSave(ti, tf, cur); }
+    if (ti) { var cur = (tf === 'themes' ? ti.themes : tf === 'micro' ? ti.micro : ti.location).slice(), at2 = cur.indexOf(tv); if (at2 >= 0) cur.splice(at2, 1); else cur.push(tv); tagSave(ti, tf, cur); }
     return;
   }
-  if ((b = t.closest('[data-tnotes]'))) { var ni = IDEA_BY[CT.open], ta = document.getElementById('tnotes'); if (ni && ta && window.__TAGGER) tagSave(ni, 'notes', ta.value); return; }
+  if ((b = t.closest('[data-tnotes]'))) { var ni = IDEA_BY[CT.open], ta = document.getElementById('tnotes'); if (ni && ta) tagSave(ni, 'notes', ta.value); return; }
   if ((b = t.closest('[data-cclose]'))) { CT.open = null; drawerRender(); return; }
   if ((b = t.closest('[data-cidea]'))) { CT.open = b.getAttribute('data-cidea'); CT.ref = 0; drawerRender(); return; }
   if ((b = t.closest('[data-cref]'))) { CT.ref = +b.getAttribute('data-cref'); drawerRender(); return; }
@@ -2054,6 +2129,8 @@ document.addEventListener('click', function (e) {
   if ((b = t.closest('[data-day]'))) { CT.day = b.getAttribute('data-day'); CT.dayModal = true; CT.dayN = 6; show(); return; }
 });
 document.addEventListener('keydown', function (e) {
+  if (e.key === 'Enter' && e.target.id === 'tnewmicro') { document.querySelector('[data-tadd]').click(); return; }
+  if (e.key === 'Enter' && e.target.id === 'authmail') { document.querySelector('[data-authsend]').click(); return; }
   if (e.key === 'Escape' && CT.open) { CT.open = null; drawerRender(); return; }
   if (e.key === 'Escape' && CT.dayModal) { CT.dayModal = false; dayModalRender(); return; }
   if (e.key === 'Enter' && e.target.getAttribute && e.target.getAttribute('data-day')) { CT.day = e.target.getAttribute('data-day'); CT.dayModal = true; CT.dayN = 6; show(); }
@@ -2119,7 +2196,7 @@ function renderRail(current) {
 }
 function show() {
   // keep the running gallery (and its loaded videos) when nothing about it changed
-  if (CT.view === 'gallery' && GL.stage && GL.stage.isConnected && GL.sig === gallerySig()) { drawerRender(); dayModalRender(); return; }
+  if (CT.view === 'gallery' && GL.stage && GL.stage.isConnected && GL.sig === gallerySig()) { galleryHearts(); galleryCounts(); drawerRender(); dayModalRender(); return; }
   renderRail('content');
   document.body.classList.toggle('gal', CT.view === 'gallery');
   document.getElementById('title').textContent = META.content[0];
@@ -2139,11 +2216,15 @@ function boot() {
   show();
   window.claude.use('db').then(function (d) {
     DB = d;
-    d.collection('items').onSnapshot(function (snap) {
-      hqIngestCollection('items', snap);
-      CONN = 'Plan edits are saved in this browser only.';
-      stamp(); render();
+    ['tags', 'favorites', 'items'].forEach(function (name) {
+      d.collection(name).onSnapshot(function (snap) {
+        hqIngestCollection(name, snap);
+        if (name === 'tags') applyTagEdits();
+        CONN = '';
+        stamp(); render();
+      });
     });
+    STORE.onStatus = function () { CONN = ''; stamp(); };
   });
 }
 boot();
